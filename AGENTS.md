@@ -2,6 +2,34 @@
 
 This guide defines repository-wide instructions for coding agents working with the Telegram Desktop codebase.
 
+## Client-Side UI Customization & Sandbox
+
+This project is a personal client based on open-source Telegram Desktop,
+with local theming and client-side UI overlays. Customizations run entirely
+in the UI layer and use `ui_sandbox.json` next to the executable. They must
+leave MTProto and network request construction untouched and must never
+send modified packets to the server.
+
+Build Windows x64 remotely in GitHub Actions using
+[`.github/workflows/win.yml`](.github/workflows/win.yml). The workflow
+configures CMake with `CMAKE_COMPILE_WARNING_AS_ERROR=ON`, which enables
+MSVC `/WX`. New C++ code must compile without warnings. Use explicit
+`static_cast` where conversions are needed, avoid unused variables and
+parameters, and register new `.h` and `.cpp` files in
+[`Telegram/CMakeLists.txt`](Telegram/CMakeLists.txt).
+
+Integration points:
+
+- Read the user model via `UserData` in
+  [`Telegram/SourceFiles/data/data_user.h`](Telegram/SourceFiles/data/data_user.h)
+  and [`Telegram/SourceFiles/data/data_user.cpp`](Telegram/SourceFiles/data/data_user.cpp).
+  Keep customization state in the local UI layer.
+- Profile and gifts widgets live in
+  [`Telegram/SourceFiles/info/profile/`](Telegram/SourceFiles/info/profile/)
+  and [`Telegram/SourceFiles/info/peer_gifts/`](Telegram/SourceFiles/info/peer_gifts/).
+- The main settings screen lives in
+  [`Telegram/SourceFiles/settings/sections/settings_main.cpp`](Telegram/SourceFiles/settings/sections/settings_main.cpp).
+
 ## AI Tasks
 
 In this repository "task" is a specific term. It always means one work record in
