@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "api/api_compose_with_ai.h"
 #include "api/api_editing.h"
 #include "api/api_bot.h"
@@ -423,14 +425,17 @@ HistoryWidget::HistoryWidget(
 	}), lifetime());
 
 	_scroll->setBottomContentRequest([=] {
-		if (!_history
+		if (UiSandbox::Enabled(UiSandbox::Option::HideSponsored)
+			|| !_history
 			|| _firstLoadRequest
 			|| !_history->loadedAtBottom()) {
 			return false;
 		}
 		using Result = Data::SponsoredMessages::AppendResult;
 		const auto tryToAppend = [=] {
-			return session().sponsoredMessages().append(_history);
+			return UiSandbox::Enabled(UiSandbox::Option::HideSponsored)
+				? Result::None
+				: session().sponsoredMessages().append(_history);
 		};
 		const auto result = tryToAppend();
 		if (result == Result::MediaLoading
@@ -498,6 +503,12 @@ HistoryWidget::HistoryWidget(
 	) | rpl::on_next([=] {
 		fieldResized();
 	}, _field->lifetime());
+	rpl::merge(
+		_field->focusedChanges() | rpl::to_empty,
+		UiSandbox::OptionValue(UiSandbox::Option::QuickFormatting) | rpl::to_empty
+	) | rpl::on_next([=] {
+		refreshSandboxFormatting();
+	}, _field->lifetime());
 	_field->focusedChanges(
 	) | rpl::filter(rpl::mappers::_1) | rpl::on_next([=] {
 		fieldFocused();
@@ -516,6 +527,25 @@ HistoryWidget::HistoryWidget(
 	) | rpl::on_next([=] {
 		fieldChanged();
 	}, _field->lifetime());
+	UiSandbox::OptionValue(UiSandbox::Option::CharacterCount)
+	| rpl::skip(1) | rpl::on_next([=] {
+		checkCharsCount();
+	}, _field->lifetime());
+	UiSandbox::OptionValue(UiSandbox::Option::HideSponsored)
+	| rpl::skip(1) | rpl::on_next([=](bool hidden) {
+		if (!_history) {
+			return;
+		}
+		if (hidden) {
+			_historySponsoredPreloading.destroy();
+			session().sponsoredMessages().clearItems(_history);
+			_sponsoredMessageBar = nullptr;
+			updateControlsGeometry();
+		} else {
+			requestSponsoredMessageBar();
+			injectSponsoredMessages();
+		}
+	}, lifetime());
 	Data::AmPremiumValue(&session()) | rpl::on_next([=] {
 		checkCharsLimitation();
 		updateAiButtonVisibility();
@@ -796,6 +826,10 @@ HistoryWidget::HistoryWidget(
 			updateHistoryGeometry();
 		});
 	}, lifetime());
+	UiSandbox::OptionValue(UiSandbox::Option::EnterToSend)
+	| rpl::on_next([=] {
+		updateFieldSubmitSettings();
+	}, _field->lifetime());
 	Core::App().settings().sendSubmitWayValue(
 	) | rpl::on_next([=] {
 		crl::on_main(this, [=] {
@@ -2357,6 +2391,11 @@ void HistoryWidget::fieldChanged() {
 			&& updateTyping
 			&& fieldHasSendText()
 			&& !suppressSendAction()) {
+			if (UiSandbox::Enabled(UiSandbox::Option::KeepUnread)
+				&& UiSandbox::Enabled(UiSandbox::Option::ReadOnTyping)
+				&& _history->unreadCount() > 0) {
+				session().data().histories().readInbox(_history);
+			}
 			session().sendProgressManager().update(
 				_history,
 				Api::SendProgressType::Typing);
@@ -3825,6 +3864,9 @@ void HistoryWidget::setupPreview() {
 }
 
 void HistoryWidget::injectSponsoredMessages() const {
+	if (!_history || UiSandbox::Enabled(UiSandbox::Option::HideSponsored)) {
+		return;
+	}
 	session().sponsoredMessages().inject(
 		_history,
 		_showAtMsgId,
@@ -4035,6 +4077,8 @@ void HistoryWidget::startMediaReplace() {
 void HistoryWidget::updateFieldSubmitSettings() {
 	const auto settings = _isInlineBot
 		? Ui::InputField::SubmitSettings::None
+		: UiSandbox::Enabled(UiSandbox::Option::EnterToSend)
+		? Ui::InputField::SubmitSettings::Enter
 		: Core::App().settings().sendSubmitWay();
 	_field->setSubmitSettings(settings);
 }
@@ -5045,7 +5089,9 @@ void HistoryWidget::windowShown() {
 }
 
 bool HistoryWidget::markingMessagesRead() const {
-	return markingContentsRead() && !session().supportMode();
+	return markingContentsRead()
+		&& !session().supportMode()
+		&& !UiSandbox::Enabled(UiSandbox::Option::KeepUnread);
 }
 
 bool HistoryWidget::markingContentsRead() const {
@@ -7701,6 +7747,15 @@ void HistoryWidget::moveFieldControls() {
 	const auto fieldTop = bottom - fieldHeight() - st::historySendPadding;
 	_field->moveToLeft(left, fieldTop);
 	_richDraftPreview->moveToLeft(left, fieldTop);
+	if (_sandboxFormatting) {
+		const auto x = left + (_sandboxCharCount ? _sandboxCharCount->width() + 8 : 0);
+		_sandboxFormatting->moveToLeft(x, std::max(fieldTop - _sandboxFormatting->height(), 0));
+		_sandboxFormatting->raise();
+	}
+	if (_sandboxCharCount) {
+		_sandboxCharCount->moveToLeft(left, std::max(fieldTop - _sandboxCharCount->height(), 0));
+		_sandboxCharCount->raise();
+	}
 	if (_fieldDisabled) {
 		_fieldDisabled->moveToLeft(
 			left,
@@ -10253,7 +10308,8 @@ bool HistoryWidget::checkSponsoredMessageBarVisibility() const {
 }
 
 void HistoryWidget::requestSponsoredMessageBar() {
-	if (!_history || !session().sponsoredMessages().isTopBarFor(_history)) {
+	if (UiSandbox::Enabled(UiSandbox::Option::HideSponsored)
+		|| !_history || !session().sponsoredMessages().isTopBarFor(_history)) {
 		return;
 	}
 	const auto checkState = [=, this] {
@@ -10287,14 +10343,16 @@ void HistoryWidget::requestSponsoredMessageBar() {
 	session().sponsoredMessages().request(
 		_history,
 		crl::guard(this, [=, this] {
-			if (history == _history) {
+			if (history == _history
+				&& !UiSandbox::Enabled(UiSandbox::Option::HideSponsored)) {
 				checkState();
 			}
 		}));
 }
 
 void HistoryWidget::checkSponsoredMessageBar() {
-	if (!_history || !session().sponsoredMessages().isTopBarFor(_history)) {
+	if (UiSandbox::Enabled(UiSandbox::Option::HideSponsored)
+		|| !_history || !session().sponsoredMessages().isTopBarFor(_history)) {
 		return;
 	}
 	const auto state = session().sponsoredMessages().state(_history);
@@ -10570,8 +10628,54 @@ void HistoryWidget::validateSubsectionTabs() {
 	orderWidgets();
 }
 
+void HistoryWidget::refreshSandboxFormatting() {
+	if (!UiSandbox::Enabled(UiSandbox::Option::QuickFormatting)
+		|| !_field->hasFocus() || _field->isHidden()) {
+		_sandboxFormatting = nullptr;
+		return;
+	}
+	if (!_sandboxFormatting) {
+		_sandboxFormatting = base::make_unique_q<Ui::RpWidget>(this);
+		const auto parent = _sandboxFormatting.get();
+		const auto add = [=](QString text, const QString &tag, int x) {
+			const auto button = Ui::CreateChild<Ui::RoundButton>(
+				parent,
+				rpl::single(std::move(text)),
+				st::defaultActiveButton);
+			button->setFocusPolicy(Qt::NoFocus);
+			button->setClickedCallback([=] {
+				_field->toggleCurrentMarkdownTag(tag);
+			});
+			button->resizeToWidth(44);
+			button->moveToLeft(x, 0);
+			button->show();
+			return button->height();
+		};
+		const auto height = add(u"B"_q, Ui::InputField::kTagBold, 0);
+		add(u"I"_q, Ui::InputField::kTagItalic, 46);
+		add(u"S"_q, Ui::InputField::kTagStrikeOut, 92);
+		parent->resize(136, height);
+		parent->show();
+	}
+	moveFieldControls();
+}
+
 void HistoryWidget::checkCharsCount() {
-	_fieldCharsCountManager.setCount(Ui::ComputeFieldCharacterCount(_field));
+	const auto count = Ui::ComputeFieldCharacterCount(_field);
+	_fieldCharsCountManager.setCount(count);
+	if (UiSandbox::Enabled(UiSandbox::Option::CharacterCount) && count > 0) {
+		if (!_sandboxCharCount) {
+			_sandboxCharCount = base::make_unique_q<Ui::FlatLabel>(
+				this,
+				st::defaultFlatLabel);
+			_sandboxCharCount->setAttribute(Qt::WA_TransparentForMouseEvents);
+		}
+		_sandboxCharCount->setText(QString::number(count));
+		_sandboxCharCount->setVisible(!_field->isHidden());
+		moveFieldControls();
+	} else {
+		_sandboxCharCount = nullptr;
+	}
 	checkCharsLimitation();
 }
 

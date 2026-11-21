@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_list_widget.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "history/view/history_view_about_view.h"
 #include "base/unixtime.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -3387,7 +3389,9 @@ bool ListWidget::markingContentsRead() const {
 }
 
 bool ListWidget::markingMessagesRead() const {
-	return markingContentsRead() && !session().supportMode();
+	return markingContentsRead()
+		&& !session().supportMode()
+		&& !UiSandbox::Enabled(UiSandbox::Option::KeepUnread);
 }
 
 void ListWidget::showFinished() {

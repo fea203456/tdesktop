@@ -279,7 +279,8 @@ Data::CustomEmojiSizeTag Badge::sizeTag() const {
 
 rpl::producer<Badge::Content> BadgeContentForPeer(not_null<PeerData*> peer) {
 	const auto statusOnlyForPremium = peer->isUser();
-	auto localStatus = rpl::single(EmojiStatusId()) | rpl::type_erased;
+	using LocalStatus = std::pair<bool, EmojiStatusId>;
+	auto localStatus = rpl::single(LocalStatus()) | rpl::type_erased;
 	if (peer->isSelf()) {
 		auto &config = UiSandbox::Config::Instance();
 		localStatus = rpl::merge(
@@ -291,14 +292,15 @@ rpl::producer<Badge::Content> BadgeContentForPeer(not_null<PeerData*> peer) {
 					&& update.id == UiSandbox::Config::Instance().current().emojiStatusId;
 			}) | rpl::to_empty
 		) | rpl::map([=] {
-			const auto id = UiSandbox::Config::Instance().current().emojiStatusId;
+			const auto &values = UiSandbox::Config::Instance().current();
+			const auto id = values.emojiStatusId;
 			if (id && !peer->hideEmojiStatus()) {
 				const auto document = peer->owner().document(id);
 				if (document->sticker() && document->hasRemoteLocation()) {
-					return EmojiStatusId{ id, {} };
+					return LocalStatus{ values.premium, EmojiStatusId{ id, {} } };
 				}
 			}
-			return EmojiStatusId();
+			return LocalStatus{ values.premium, {} };
 		}) | rpl::distinct_until_changed() | rpl::type_erased;
 	}
 	return rpl::combine(
@@ -308,9 +310,12 @@ rpl::producer<Badge::Content> BadgeContentForPeer(not_null<PeerData*> peer) {
 	) | rpl::map([=](
 			BadgeType badge,
 			EmojiStatusId emojiStatusId,
-			EmojiStatusId local) {
-		if (local) {
-			return Badge::Content{ BadgeType::Premium, local };
+			LocalStatus local) {
+		if (local.second) {
+			return Badge::Content{ BadgeType::Premium, local.second };
+		}
+		if (local.first && (badge == BadgeType::None || badge == BadgeType::Verified)) {
+			badge = BadgeType::Premium;
 		}
 		if (emojiStatusId.collectible && (badge == BadgeType::Verified)) {
 			return Badge::Content{ BadgeType::Premium, emojiStatusId };
@@ -329,11 +334,37 @@ rpl::producer<Badge::Content> BadgeContentForPeer(not_null<PeerData*> peer) {
 
 rpl::producer<Badge::Content> VerifiedContentForPeer(
 		not_null<PeerData*> peer) {
-	return BadgeValue(peer) | rpl::map([=](BadgeType badge) {
-		if (badge != BadgeType::Verified) {
-			badge = BadgeType::None;
+	const auto server = BadgeValue(peer);
+	if (!peer->isSelf()) {
+		return rpl::duplicate(server) | rpl::map([](BadgeType badge) {
+			return Badge::Content{ (badge == BadgeType::Verified)
+				? BadgeType::Verified
+				: BadgeType::None };
+		});
+	}
+	auto &config = UiSandbox::Config::Instance();
+	auto local = rpl::merge(
+		rpl::single(),
+		config.changes(),
+		config.documentChanges() | rpl::filter([=](UiSandbox::DocumentUpdate update) {
+			return update.session == &peer->session()
+				&& update.id == UiSandbox::Config::Instance().current().verifiedBadgeId;
+		}) | rpl::to_empty
+	);
+	return rpl::combine(rpl::duplicate(server), std::move(local), [=](
+			BadgeType badge,
+			rpl::empty_value) {
+		const auto &values = UiSandbox::Config::Instance().current();
+		if (!values.verified && badge != BadgeType::Verified) {
+			return Badge::Content{ BadgeType::None };
 		}
-		return Badge::Content{ badge };
+		if (const auto id = values.verifiedBadgeId) {
+			const auto document = peer->owner().document(id);
+			if (document->sticker() && document->hasRemoteLocation()) {
+				return Badge::Content{ BadgeType::Premium, EmojiStatusId{ id, {} } };
+			}
+		}
+		return Badge::Content{ BadgeType::Verified };
 	});
 }
 

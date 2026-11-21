@@ -139,7 +139,10 @@ namespace {
 		not_null<Window::SessionNavigation*> navigation,
 		not_null<PeerData*> peer,
 		Ui::MultiSlideTracker &tracker) {
-	auto count = PeerGiftsCountValue(peer);
+	auto count = rpl::combine(
+		PeerGiftsCountValue(peer),
+		PeerGiftsShownValue(peer),
+		[](int total, bool shown) { return shown ? total : 0; });
 	auto textFromCount = [](int count) {
 		return tr::lng_profile_peer_gifts(tr::now, lt_count, count);
 	};

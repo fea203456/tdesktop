@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_chat_section.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "history/admin_log/history_admin_log_section.h"
 #include "history/view/controls/history_view_top_controls.h"
 #include "history/view/controls/history_view_bottom_controls.h"
@@ -679,6 +681,13 @@ ChatWidget::ChatWidget(
 		if (mode() == Mode::Sublist) {
 			return;
 		} else if (!data.cancel) {
+			if (!_replies && !_sublist
+				&& data.type == Api::SendProgressType::Typing
+				&& UiSandbox::Enabled(UiSandbox::Option::KeepUnread)
+				&& UiSandbox::Enabled(UiSandbox::Option::ReadOnTyping)
+				&& _history->unreadCount() > 0) {
+				session().data().histories().readInbox(_history);
+			}
 			session().sendProgressManager().update(
 				_history,
 				_repliesRootId,
@@ -5366,6 +5375,9 @@ void ChatWidget::listTextSelectionUpdated() {
 }
 
 void ChatWidget::listMarkReadTill(not_null<HistoryItem*> item) {
+	if (UiSandbox::Enabled(UiSandbox::Option::KeepUnread)) {
+		return;
+	}
 	if (_replies) {
 		_replies->readTill(item);
 	} else if (_sublist) {

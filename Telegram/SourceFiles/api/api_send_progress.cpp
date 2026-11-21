@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "api/api_send_progress.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "main/main_session.h"
 #include "history/history.h"
 #include "data/data_peer.h"
@@ -64,6 +66,13 @@ void SendProgressManager::update(
 		MsgId topMsgId,
 		SendProgressType type,
 		int progress) {
+	using Type = SendProgressType;
+	if (UiSandbox::Enabled(UiSandbox::Option::HideTyping)
+		&& (type == Type::Typing || type == Type::RecordVoice
+			|| type == Type::RecordVideo || type == Type::RecordRound)) {
+		cancel(history, topMsgId, type);
+		return;
+	}
 	const auto peer = history->peer;
 	if (peer->isSelf()
 		|| (peer->isChannel()

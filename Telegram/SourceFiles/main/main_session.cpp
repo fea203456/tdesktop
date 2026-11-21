@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "main/main_session.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "ui_sandbox/ui_sandbox_documents.h"
 
 #include "apiwrap.h"
@@ -281,6 +283,19 @@ Session::Session(
 	Tgw::StartStorage(this);
 	crl::on_main(this, [=] {
 		UiSandbox::PreloadDocuments(this);
+		using UiSandbox::Option;
+		using UiSandbox::OptionValue;
+		rpl::combine(OptionValue(Option::Seconds), OptionValue(Option::ExactViews))
+		| rpl::skip(1) | rpl::on_next([=] {
+			data().refreshMessagePresentation(false);
+		}, lifetime());
+		rpl::combine(OptionValue(Option::FilterZalgo), OptionValue(Option::RevealSpoilers))
+		| rpl::skip(1) | rpl::on_next([=] {
+			data().refreshMessagePresentation(true);
+		}, lifetime());
+		OptionValue(Option::HideOnline) | rpl::skip(1) | rpl::on_next([=] {
+			_updates->updateOnline();
+		}, lifetime());
 	});
 
 	appConfig().value(

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/reactions/history_view_reactions.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "history/history_item.h"
 #include "history/history.h"
 #include "history/view/history_view_message.h"
@@ -706,6 +708,16 @@ void InlineList::paintSingleBg(
 	p.setOpacity(opacity);
 	if (!areTags()) {
 		const auto radius = fill.height() / 2.;
+		if (UiSandbox::Enabled(UiSandbox::Option::ReactionGlow)) {
+			auto glow = color;
+			const auto alpha = color.alpha();
+			for (auto step = 3; step != 0; --step) {
+				glow.setAlpha(alpha / (step * 7));
+				p.setBrush(glow);
+				const auto padding = QMargins(step, step, step, step);
+				p.drawRoundedRect(fill.marginsAdded(padding), radius + step, radius + step);
+			}
+		}
 		p.setBrush(color);
 		p.drawRoundedRect(fill, radius, radius);
 		return;

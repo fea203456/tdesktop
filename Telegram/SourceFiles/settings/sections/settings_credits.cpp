@@ -86,7 +86,7 @@ rpl::producer<CreditsAmount> DisplayStarsBalance(
 		rpl::single() | rpl::then(config.changes())
 	) | rpl::map([](CreditsAmount balance, rpl::empty_value) {
 		const auto &values = UiSandbox::Config::Instance().current();
-		return values.virtualPurchases
+		return UiSandbox::Enabled(UiSandbox::Option::OverrideStarsBalance)
 			? CreditsAmount(values.virtualStars)
 			: balance;
 	});
@@ -584,7 +584,7 @@ void Credits::setupContent() {
 		const auto note = rpl::single() | rpl::then(
 			UiSandbox::Config::Instance().changes()
 		) | rpl::map([] {
-			return UiSandbox::Config::Instance().current().virtualPurchases
+			return UiSandbox::Enabled(UiSandbox::Option::OverrideStarsBalance)
 				? u"Виртуальный баланс UI Sandbox"_q
 				: QString();
 		});

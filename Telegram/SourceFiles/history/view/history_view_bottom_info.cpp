@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_bottom_info.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "ui/chat/message_bubble.h"
 #include "ui/chat/chat_style.h"
 #include "ui/effects/reaction_fly_animation.h"
@@ -510,6 +512,8 @@ void BottomInfo::layoutDateText() {
 		: edited + ((_data.flags
 			& (Data::Flag::ForwardedDate | Data::Flag::FullDate))
 		? Ui::FormatDateTimeSavedFrom(_data.date)
+		: UiSandbox::Enabled(UiSandbox::Option::Seconds)
+		? _data.date.time().toString(u"HH:mm:ss"_q)
 		: QLocale().toString(_data.date.time(), QLocale::ShortFormat));
 	const auto afterAuthor = prefix + date;
 	const auto afterAuthorWidth = st::msgDateFont->width(afterAuthor);
@@ -563,7 +567,9 @@ void BottomInfo::layoutViewsText() {
 	}
 	_views.setText(
 		st::msgDateTextStyle,
-		Lang::FormatCountToShort(std::max(*_data.views, 1)).string,
+		UiSandbox::Enabled(UiSandbox::Option::ExactViews)
+			? Lang::FormatCountDecimal(*_data.views)
+			: Lang::FormatCountToShort(std::max(*_data.views, 1)).string,
 		Ui::NameTextOptions());
 }
 

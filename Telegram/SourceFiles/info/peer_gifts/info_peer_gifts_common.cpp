@@ -286,6 +286,10 @@ GiftButton::GiftButton(
 		_delegate->invalidateCache();
 		update();
 	}, lifetime());
+	UiSandbox::OptionValue(UiSandbox::Option::GlassGifts)
+	| rpl::skip(1) | rpl::on_next([=] {
+		update();
+	}, lifetime());
 }
 
 GiftButton::~GiftButton() {
@@ -1073,8 +1077,16 @@ void GiftButton::paint(QPainter &p, float64 craftProgress) {
 	const auto width = this->width();
 	const auto height = background.height() / dpr;
 	const auto roundedRatio = (1. - craftProgress);
+	const auto glass = craftProgress == 0.
+		&& _mode == Mode::Minimal
+		&& UiSandbox::Enabled(UiSandbox::Option::GlassGifts);
+	const auto backgroundOpacity = p.opacity();
 	if (craftProgress == 0.) {
+		if (glass) {
+			p.setOpacity(backgroundOpacity * 0.66);
+		}
 		paintBackground(p, background);
+		p.setOpacity(backgroundOpacity);
 	} else if (craftProgress < 1.) {
 		p.setOpacity(roundedRatio);
 		paintBackground(p, background);
@@ -1097,7 +1109,11 @@ void GiftButton::paint(QPainter &p, float64 craftProgress) {
 			}
 		} else {
 			cacheUniqueBackground(unique, width, height);
+			if (glass) {
+				p.setOpacity(backgroundOpacity * 0.76);
+			}
 			p.drawImage(extend.left(), extend.top(), _uniqueBackgroundCache);
+			p.setOpacity(backgroundOpacity);
 		}
 	} else if (requirePremium || auction) {
 		auto hq = PainterHighQualityEnabler(p);

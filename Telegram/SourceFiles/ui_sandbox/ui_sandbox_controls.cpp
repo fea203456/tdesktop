@@ -2,15 +2,10 @@
 
 #include "ui_sandbox/ui_sandbox_config.h"
 #include "base/invoke_queued.h"
-#include "data/data_changes.h"
 #include "data/data_document.h"
 #include "data/data_star_gift.h"
-#include "data/data_user.h"
-#include "main/main_session.h"
-#include "ui/toast/toast.h"
 #include "ui/layers/generic_box.h"
 #include "ui/widgets/buttons.h"
-#include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/wrap/vertical_layout.h"
@@ -217,139 +212,8 @@ QString GiftStoreMessage(GiftStoreResult result) {
 	Unexpected("UI Sandbox gift store result.");
 }
 
-void EditConfigBox(
-		not_null<Ui::GenericBox*> box,
-		not_null<Main::Session*> session) {
-	box->setTitle(rpl::single(u"UI Sandbox"_q));
-
-	const auto &values = Config::Instance().current();
-	const auto premium = box->addRow(object_ptr<Ui::Checkbox>(
-		box,
-		u"Premium"_q,
-		values.premium,
-		st::settingsCheckbox));
-	const auto verified = box->addRow(object_ptr<Ui::Checkbox>(
-		box,
-		u"Verified"_q,
-		values.verified,
-		st::settingsCheckbox));
-	const auto addField = [&](QString label, const QString &value) {
-		return box->addRow(object_ptr<Ui::InputField>(
-			box,
-			st::defaultInputField,
-			Ui::InputField::Mode::NoNewlines,
-			rpl::single(std::move(label)),
-			value));
-	};
-	const auto emoji = addField(
-		u"Emoji status document ID"_q,
-		values.emojiStatusId ? QString::number(values.emojiStatusId) : QString());
-	const auto phone = addField(u"Phone"_q, values.phone);
-	const auto username = addField(u"Username"_q, values.username);
-	const auto collectibles = addField(
-		u"Collectible usernames (comma separated)"_q,
-		values.collectibleUsernames.join(u", "_q));
-	const auto rating = addField(
-		u"Profile rating"_q,
-		values.rating ? QString::number(values.rating) : QString());
-
-	const auto virtualPurchases = box->addRow(object_ptr<Ui::Checkbox>(
-		box,
-		u"Локальные покупки подарков в UI Sandbox"_q,
-		values.virtualPurchases,
-		st::settingsCheckbox));
-	const auto stars = addField(
-		u"Виртуальный баланс Stars"_q,
-		QString::number(values.virtualStars));
-	const auto updateProfile = [=] {
-		using Flag = Data::PeerUpdate::Flag;
-		session->changes().peerUpdated(
-			session->user(),
-			Flag::PhoneNumber | Flag::Username | Flag::Usernames
-				| Flag::EmojiStatus | Flag::PeerGifts);
-	};
-
-	const auto save = box->addRow(object_ptr<Ui::SettingsButton>(
-		box,
-		rpl::single(u"Сохранить"_q),
-		st::settingsButtonNoIcon));
-	const auto reset = box->addRow(object_ptr<Ui::SettingsButton>(
-		box,
-		rpl::single(u"Сбросить"_q),
-		st::settingsButtonNoIcon));
-
-	save->setClickedCallback([=] {
-		const auto emojiText = emoji->getLastText().trimmed();
-		auto emojiId = uint64(0);
-		if (!emojiText.isEmpty() && !ParseId(emojiText, emojiId)) {
-			emoji->showError();
-			box->showToast(u"Введите числовой ID документа."_q);
-			return;
-		}
-		const auto ratingText = rating->getLastText().trimmed();
-		auto ratingOk = false;
-		const auto ratingValue = ratingText.toInt(&ratingOk);
-		if (!ratingText.isEmpty() && (!ratingOk || ratingValue < 0)) {
-			rating->showError();
-			box->showToast(u"Введите целое неотрицательное число."_q);
-			return;
-		}
-		auto names = QStringList();
-		for (const auto &part : collectibles->getLastText().split(',')) {
-			const auto name = part.trimmed();
-			if (!name.isEmpty()) {
-				names.push_back(name);
-			}
-		}
-		auto balanceOk = false;
-		const auto balanceText = stars->getLastText().trimmed();
-		const auto balance = balanceText.isEmpty()
-			? kDefaultVirtualStars
-			: balanceText.toLongLong(&balanceOk);
-		if (!balanceText.isEmpty() && (!balanceOk || balance < 0)) {
-			stars->showError();
-			box->showToast(u"Введите целый неотрицательный баланс."_q);
-			return;
-		}
-		if (!Config::Instance().save({
-			.premium = premium->checked(),
-			.verified = verified->checked(),
-			.emojiStatusId = emojiId,
-			.phone = phone->getLastText(),
-			.username = username->getLastText().trimmed(),
-			.collectibleUsernames = std::move(names),
-			.rating = ratingValue,
-			.virtualPurchases = virtualPurchases->checked(),
-			.virtualStars = balance,
-			.gifts = Config::Instance().current().gifts,
-		})) {
-			box->showToast(u"Не удалось сохранить ui_sandbox.json."_q);
-			return;
-		}
-		updateProfile();
-		[[maybe_unused]] const auto toast = Ui::Toast::Show(
-			box->getDelegate()->outerContainer(),
-			u"UI Sandbox: сохранено"_q);
-	});
-	reset->setClickedCallback([=] {
-		if (!Config::Instance().reset()) {
-			box->showToast(u"Не удалось сбросить ui_sandbox.json."_q);
-			return;
-		}
-		premium->setChecked(false);
-		verified->setChecked(false);
-		emoji->setText(QString());
-		phone->setText(QString());
-		username->setText(QString());
-		collectibles->setText(QString());
-		rating->setText(QString());
-		virtualPurchases->setChecked(false);
-		stars->setText(QString::number(kDefaultVirtualStars));
-		updateProfile();
-		[[maybe_unused]] const auto toast = Ui::Toast::Show(
-			box->getDelegate()->outerContainer(),
-			u"UI Sandbox: сброшено"_q);
-	});
+void EditGiftsBox(not_null<Ui::GenericBox*> box) {
+	box->setTitle(rpl::single(u"Локальные подарки"_q));
 	AddGiftControls(box);
 }
 

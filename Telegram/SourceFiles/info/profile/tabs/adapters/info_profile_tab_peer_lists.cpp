@@ -227,11 +227,10 @@ private:
 }
 
 MediaTabDescriptor MakeGiftsTabDescriptor(not_null<PeerData*> peer) {
-	using namespace rpl::mappers;
 	return {
 		.id = u"gifts"_q,
 		.title = GiftsTabTitleValue(peer),
-		.shown = PeerGiftsCountValue(peer) | rpl::map(_1 > 0),
+		.shown = PeerGiftsShownValue(peer),
 		.factory = [=](MediaTabContext context) {
 			return std::make_unique<GiftsTabAdapter>(
 				std::move(context),

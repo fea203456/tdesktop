@@ -296,6 +296,7 @@ Ui::SettingsButton *SectionBuilder::addSectionButton(SectionArgs &&args) {
 		.icon = std::move(args.icon),
 		.onClick = [=] { showOther(target); },
 		.keywords = std::move(args.keywords),
+		.shown = std::move(args.shown),
 	});
 }
 

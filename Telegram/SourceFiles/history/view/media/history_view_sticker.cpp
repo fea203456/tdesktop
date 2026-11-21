@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_sticker.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "base/options.h"
 #include "boxes/sticker_set_box.h"
 #include "history/history.h"
@@ -206,7 +208,8 @@ QSize Sticker::Size() {
 			side);
 		return { scaled, scaled };
 	}
-	return { side, side };
+	const auto scaled = side * UiSandbox::Config::Instance().current().stickerScale / 100;
+	return { scaled, scaled };
 }
 
 QSize Sticker::Size(not_null<DocumentData*> document) {

@@ -1,7 +1,5 @@
 #include "ui_sandbox/ui_sandbox_config.h"
 
-#include "settings.h"
-
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QJsonArray>
@@ -9,11 +7,52 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QSaveFile>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QUrl>
+#include <crl/crl_time.h>
+#include <rpl/distinct_until_changed.h>
+#include <rpl/map.h>
+
+#include "settings.h"
 
 #include <algorithm>
 
 namespace UiSandbox {
 namespace {
+
+constexpr auto kOptionKeys = std::array{
+	"hideGifts",
+	"overrideStarsBalance",
+	"glassHub",
+	"enterToSend",
+	"characterCount",
+	"seconds",
+	"exactViews",
+	"noVoiceAutoplay",
+	"hidePhone",
+	"hideTyping",
+	"keepUnread",
+	"readOnTyping",
+	"hideOnline",
+	"hideSponsored",
+	"peerId",
+	"creationDate",
+	"hideDevices",
+	"hideFolders",
+	"hidePrivacy",
+	"hideLanguage",
+	"hideFaq",
+	"squareAvatars",
+	"glassProfile",
+	"snowProfile",
+	"blurProfileAvatar",
+	"confirmCall",
+	"filterZalgo",
+	"revealSpoilers",
+	"quickFormatting",
+	"reactionGlow",
+	"glassGifts",
+};
+static_assert(kOptionKeys.size() == static_cast<size_t>(Option::Count));
 
 QString ConfigPath() {
 	return QDir(cWorkingDir()).filePath(u"ui_sandbox.json"_q);
@@ -45,6 +84,13 @@ Values ReadValues(const QJsonObject &object) {
 		.virtualPurchases = object.value(u"virtualPurchases"_q).toBool(),
 		.virtualStars = std::max(qint64(0), object.value(u"virtualStars"_q).toInteger(kDefaultVirtualStars)),
 		.gifts = {},
+		.options = {},
+		.verifiedBadgeId = ReadId(object.value(u"verifiedBadgeId"_q)),
+		.registrationDate = object.value(u"registrationDate"_q).toString(),
+		.activity = object.value(u"activity"_q).toString(),
+		.notes = object.value(u"notes"_q).toString(),
+		.profileBanner = object.value(u"profileBanner"_q).toString(),
+		.stickerScale = std::clamp(object.value(u"stickerScale"_q).toInt(100), 50, 150),
 	};
 	for (const auto entry : object.value(u"collectibleUsernames"_q).toArray()) {
 		const auto username = entry.toString();
@@ -77,6 +123,15 @@ Values ReadValues(const QJsonObject &object) {
 			&& IsGiftColor(preset.edgeColor)) {
 			result.gifts.push_back(std::move(preset));
 		}
+	}
+	const auto options = object.value(u"options"_q).toObject();
+	for (auto i = size_t(0); i != kOptionKeys.size(); ++i) {
+		result.options[i] = options.value(
+			QString::fromLatin1(kOptionKeys[i])).toBool();
+	}
+	if (!options.contains(u"overrideStarsBalance"_q)) {
+		result.options[static_cast<size_t>(Option::OverrideStarsBalance)]
+			= result.virtualPurchases;
 	}
 	return result;
 }
@@ -133,8 +188,9 @@ bool Config::reload() {
 	return true;
 }
 
-bool Config::save(Values values) {
-	values.collectibleUsernames.removeAll(QString());
+namespace {
+
+QJsonObject EncodeValues(const Values &values) {
 	auto gifts = QJsonArray();
 	for (const auto &gift : values.gifts) {
 		gifts.append(QJsonObject{
@@ -151,7 +207,12 @@ bool Config::save(Values values) {
 			{ u"sourceSlug"_q, gift.sourceSlug },
 		});
 	}
-	const auto object = QJsonObject{
+	auto options = QJsonObject();
+	for (auto i = size_t(0); i != kOptionKeys.size(); ++i) {
+		options.insert(QString::fromLatin1(kOptionKeys[i]), values.options[i]);
+	}
+	return {
+		{ u"sandboxFormat"_q, 1 },
 		{ u"premium"_q, values.premium },
 		{ u"verified"_q, values.verified },
 		{ u"emojiStatusId"_q, QString::number(values.emojiStatusId) },
@@ -162,8 +223,21 @@ bool Config::save(Values values) {
 		{ u"virtualPurchases"_q, values.virtualPurchases },
 		{ u"virtualStars"_q, static_cast<qint64>(values.virtualStars) },
 		{ u"gifts"_q, gifts },
+		{ u"options"_q, options },
+		{ u"verifiedBadgeId"_q, QString::number(values.verifiedBadgeId) },
+		{ u"registrationDate"_q, values.registrationDate },
+		{ u"activity"_q, values.activity },
+		{ u"notes"_q, values.notes },
+		{ u"profileBanner"_q, values.profileBanner },
+		{ u"stickerScale"_q, values.stickerScale },
 	};
-	if (!WriteConfig(object)) {
+}
+
+} // namespace
+
+bool Config::save(Values values) {
+	values.collectibleUsernames.removeAll(QString());
+	if (!WriteConfig(EncodeValues(values))) {
 		return false;
 	}
 	_values = std::move(values);
@@ -178,6 +252,43 @@ bool Config::reset() {
 	_values = {};
 	_changes.fire({});
 	return true;
+}
+
+QByteArray Config::exportJson() const {
+	return QJsonDocument(EncodeValues(_values)).toJson();
+}
+
+bool Config::importJson(const QByteArray &bytes) {
+	if (bytes.isEmpty() || bytes.size() > 4 * 1024 * 1024) {
+		return false;
+	}
+	const auto doc = QJsonDocument::fromJson(bytes);
+	if (!doc.isObject()) {
+		return false;
+	}
+	const auto object = doc.object();
+	const auto format = object.value(u"sandboxFormat"_q);
+	if (format.isUndefined()) {
+		if (!object.contains(u"premium"_q)
+			|| !object.contains(u"gifts"_q)) {
+			return false;
+		}
+	} else if (format.toInt() != 1) {
+		return false;
+	}
+	return save(ReadValues(object));
+}
+
+bool Enabled(Option option) {
+	return Config::Instance().current().options[static_cast<size_t>(option)];
+}
+
+rpl::producer<bool> OptionValue(Option option) {
+	return rpl::single() | rpl::then(
+		Config::Instance().changes()
+	) | rpl::map([=] {
+		return Enabled(option);
+	}) | rpl::distinct_until_changed();
 }
 
 } // namespace UiSandbox

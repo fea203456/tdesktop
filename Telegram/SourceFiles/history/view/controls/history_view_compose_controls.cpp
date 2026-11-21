@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/controls/history_view_compose_controls.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "history/view/controls/history_view_bot_menu_button.h"
 
 #include "base/call_delayed.h"
@@ -3072,6 +3074,10 @@ void ComposeControls::init() {
 		saveFieldToHistoryLocalDraft(false);
 	}, _wrap->lifetime());
 
+	UiSandbox::OptionValue(UiSandbox::Option::EnterToSend)
+	| rpl::on_next([=] {
+		updateSubmitSettings();
+	}, _field->lifetime());
 	Core::App().settings().sendSubmitWayValue(
 	) | rpl::on_next([=] {
 		updateSubmitSettings();
@@ -3326,6 +3332,8 @@ void ComposeControls::initField() {
 void ComposeControls::updateSubmitSettings() {
 	const auto settings = _isInlineBot
 		? Ui::InputField::SubmitSettings::None
+		: UiSandbox::Enabled(UiSandbox::Option::EnterToSend)
+		? Ui::InputField::SubmitSettings::Enter
 		: Core::App().settings().sendSubmitWay();
 	_field->setSubmitSettings(settings);
 }

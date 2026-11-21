@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_element.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "apiwrap.h"
 #include "api/api_transcribes.h"
 #include "history/view/history_view_service_message.h"
@@ -1371,7 +1373,9 @@ void Element::checkSpecialOnlyEmoji() {
 
 void Element::hideSpoilers() {
 	if (_text.hasSpoilers()) {
-		_text.setSpoilerRevealed(false, anim::type::instant);
+		_text.setSpoilerRevealed(
+			UiSandbox::Enabled(UiSandbox::Option::RevealSpoilers),
+			anim::type::instant);
 	}
 	if (_media) {
 		_media->hideSpoilers();
@@ -2295,6 +2299,55 @@ void Element::validateText() {
 	ensureRichPage(std::move(richPage));
 }
 
+namespace {
+
+TextWithEntities TrimCombiningMarks(const TextWithEntities &input) {
+	constexpr auto kMaxMarks = 4;
+	const auto length = static_cast<int>(input.text.size());
+	auto marks = 0;
+	auto removed = 0;
+	auto offsets = std::vector<int>();
+	for (auto i = 0; i != length; ++i) {
+		const auto character = input.text.at(i);
+		const auto category = character.category();
+		const auto combining = category == QChar::Mark_NonSpacing
+			|| category == QChar::Mark_SpacingCombining
+			|| category == QChar::Mark_Enclosing;
+		marks = combining ? marks + 1 : 0;
+		if (marks > kMaxMarks) {
+			offsets.push_back(i);
+		}
+	}
+	if (offsets.empty()) {
+		return input;
+	}
+	auto result = TextWithEntities();
+	result.text.reserve(length - static_cast<int>(offsets.size()));
+	for (auto i = 0; i != length; ++i) {
+		if (removed < static_cast<int>(offsets.size()) && offsets[removed] == i) {
+			++removed;
+		} else {
+			result.text.append(input.text.at(i));
+		}
+	}
+	const auto mapPosition = [&](int position) {
+		const auto before = std::lower_bound(offsets.begin(), offsets.end(), position);
+		return position - static_cast<int>(before - offsets.begin());
+	};
+	for (const auto &entity : input.entities) {
+		if (entity.validForText(length)) {
+			const auto from = mapPosition(entity.offset());
+			const auto to = mapPosition(entity.offset() + entity.length());
+			if (to > from) {
+				result.entities.emplace_back(entity.type(), from, to - from, entity.data());
+			}
+		}
+	}
+	return result;
+}
+
+} // namespace
+
 void Element::setTextWithLinks(
 		const TextWithEntities &text,
 		const std::vector<ClickHandlerPtr> &links) {
@@ -2314,7 +2367,14 @@ void Element::setTextWithLinks(
 		const auto item = data();
 		const auto &options = Ui::ItemTextOptions(item);
 		clearSpecialOnlyEmoji();
-		_text.setMarkedText(st::messageTextStyle, text, options, context);
+		if (UiSandbox::Enabled(UiSandbox::Option::FilterZalgo)) {
+			_text.setMarkedText(st::messageTextStyle, TrimCombiningMarks(text), options, context);
+		} else {
+			_text.setMarkedText(st::messageTextStyle, text, options, context);
+		}
+		if (UiSandbox::Enabled(UiSandbox::Option::RevealSpoilers)) {
+			_text.setSpoilerRevealed(true, anim::type::instant);
+		}
 		if (!item->_text.empty() && _text.isEmpty()){
 			// If server has allowed some text that we've trim-ed entirely,
 			// just replace it with something so that UI won't look buggy.

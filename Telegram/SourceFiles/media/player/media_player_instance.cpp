@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/player/media_player_instance.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "data/data_document.h"
 #include "data/data_session.h"
 #include "data/data_changes.h"
@@ -1481,7 +1483,9 @@ void Instance::emitUpdate(AudioMsgId::Type type, CheckCallback check) {
 		if (data->isPlaying && state.state == State::StoppedAtEnd) {
 			if (repeat(data) == RepeatMode::One) {
 				play(data->current);
-			} else if (OptionDisableAutoplayNext.value()) {
+			} else if (OptionDisableAutoplayNext.value()
+				|| (type == AudioMsgId::Type::Voice
+					&& UiSandbox::Enabled(UiSandbox::Option::NoVoiceAutoplay))) {
 				finished = true;
 			} else if (!moveInPlaylist(data, 1, true)) {
 				finished = true;

@@ -7,7 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_main.h"
 
-#include "ui_sandbox/ui_sandbox_controls.h"
+#include "ui_sandbox/ui_sandbox_hub.h"
+#include "ui_sandbox/ui_sandbox_config.h"
 
 #include "settings/settings_common_session.h"
 
@@ -363,6 +364,12 @@ void Cover::refreshQrButtonGeometry(int newWidth) {
 	_qrButton->moveToRight(buttonRight - inset, buttonTop, newWidth);
 }
 
+rpl::producer<bool> SandboxSectionShown(UiSandbox::Option option) {
+	return UiSandbox::OptionValue(option) | rpl::map([](bool hide) {
+		return !hide;
+	});
+}
+
 void BuildSectionButtons(SectionBuilder &builder) {
 	const auto session = builder.session();
 	const auto controller = builder.controller();
@@ -392,6 +399,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.targetSection = PrivacySecurityId(),
 		.icon = { &st::menuIconLock },
 		.keywords = { u"security"_q, u"passcode"_q, u"password"_q, u"2fa"_q },
+		.shown = SandboxSectionShown(UiSandbox::Option::HidePrivacy),
 	});
 
 	builder.addSectionButton({
@@ -431,7 +439,10 @@ void BuildSectionButtons(SectionBuilder &builder) {
 			.icon = { &st::menuIconShowInFolder },
 			.onClick = [=] { showOther(FoldersId()); },
 			.keywords = { u"filters"_q, u"tabs"_q },
-			.shown = std::move(shownProducer),
+			.shown = rpl::combine(
+				std::move(shownProducer),
+				SandboxSectionShown(UiSandbox::Option::HideFolders),
+				[](bool available, bool shown) { return available && shown; }),
 		});
 	}
 
@@ -455,6 +466,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.targetSection = CallsId(),
 		.icon = { &st::menuIconUnmute },
 		.keywords = { u"sessions"_q, u"calls"_q },
+		.shown = SandboxSectionShown(UiSandbox::Option::HideDevices),
 	});
 
 	builder.addButton({
@@ -481,6 +493,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 			Guard = LanguageBox::Show(controller);
 		},
 		.keywords = { u"translate"_q, u"localization"_q, u"language"_q },
+		.shown = SandboxSectionShown(UiSandbox::Option::HideLanguage),
 	});
 }
 
@@ -617,6 +630,7 @@ void BuildHelpSection(SectionBuilder &builder) {
 			u"legend"_q,
 			u"gestures"_q,
 		},
+		.shown = SandboxSectionShown(UiSandbox::Option::HideFaq),
 	});
 	if (faq) {
 		const auto legend = Ui::CreateChild<CircleRippleIconButton>(

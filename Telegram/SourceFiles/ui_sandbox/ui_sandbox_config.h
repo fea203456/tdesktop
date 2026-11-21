@@ -5,6 +5,7 @@
 #include <QtCore/QStringList>
 #include <rpl/event_stream.h>
 
+#include <array>
 #include <vector>
 
 namespace Main {
@@ -38,6 +39,43 @@ struct GiftPreset {
 
 inline constexpr auto kDefaultVirtualStars = int64(100000);
 
+enum class Option {
+	HideGifts,
+	OverrideStarsBalance,
+	GlassHub,
+	EnterToSend,
+	CharacterCount,
+	Seconds,
+	ExactViews,
+	NoVoiceAutoplay,
+	HidePhone,
+	HideTyping,
+	KeepUnread,
+	ReadOnTyping,
+	HideOnline,
+	HideSponsored,
+	PeerId,
+	CreationDate,
+	HideDevices,
+	HideFolders,
+	HidePrivacy,
+	HideLanguage,
+	HideFaq,
+	SquareAvatars,
+	GlassProfile,
+	SnowProfile,
+	BlurProfileAvatar,
+	ConfirmCall,
+	FilterZalgo,
+	RevealSpoilers,
+	QuickFormatting,
+	ReactionGlow,
+	GlassGifts,
+	Count,
+};
+
+using Options = std::array<bool, static_cast<size_t>(Option::Count)>;
+
 struct Values {
 	bool premium = false;
 	bool verified = false;
@@ -49,6 +87,13 @@ struct Values {
 	bool virtualPurchases = false;
 	int64 virtualStars = kDefaultVirtualStars;
 	std::vector<GiftPreset> gifts;
+	Options options = {};
+	uint64 verifiedBadgeId = 0;
+	QString registrationDate;
+	QString activity;
+	QString notes;
+	QString profileBanner;
+	int stickerScale = 100;
 };
 
 class Config final {
@@ -62,6 +107,8 @@ public:
 	[[nodiscard]] bool reload();
 	[[nodiscard]] bool save(Values values);
 	[[nodiscard]] bool reset();
+	[[nodiscard]] QByteArray exportJson() const;
+	[[nodiscard]] bool importJson(const QByteArray &bytes);
 
 private:
 	Config();
@@ -72,5 +119,8 @@ private:
 	rpl::event_stream<> _changes;
 	rpl::event_stream<DocumentUpdate> _documentChanges;
 };
+
+[[nodiscard]] bool Enabled(Option option);
+[[nodiscard]] rpl::producer<bool> OptionValue(Option option);
 
 } // namespace UiSandbox

@@ -876,6 +876,8 @@ PRIVATE
     ui_sandbox/ui_sandbox_controls.h
     ui_sandbox/ui_sandbox_documents.cpp
     ui_sandbox/ui_sandbox_documents.h
+    ui_sandbox/ui_sandbox_hub.cpp
+    ui_sandbox/ui_sandbox_hub.h
     data/data_user.h
     data/data_user_photos.cpp
     data/data_user_photos.h

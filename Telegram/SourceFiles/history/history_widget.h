@@ -79,6 +79,7 @@ class RpWidget;
 class SendButton;
 class SilentToggle;
 class FlatButton;
+class FlatLabel;
 class RoundButton;
 class PinnedBar;
 class GroupCallBar;
@@ -812,6 +813,7 @@ private:
 	void validateSubsectionTabs();
 
 	void checkCharsCount();
+	void refreshSandboxFormatting();
 	void checkCharsLimitation();
 
 	MTP::Sender _api;
@@ -992,6 +994,8 @@ private:
 	const not_null<BotKeyboard*> _keyboard;
 
 	FieldCharsCountManager _fieldCharsCountManager;
+	base::unique_qptr<Ui::FlatLabel> _sandboxCharCount;
+	base::unique_qptr<Ui::RpWidget> _sandboxFormatting;
 
 	std::unique_ptr<Ui::ChooseThemeController> _chooseTheme;
 

@@ -2336,6 +2336,23 @@ rpl::producer<ReactionsRemoved> Session::reactionsRemoved() const {
 	return _reactionsRemoved.events();
 }
 
+void Session::refreshMessagePresentation(bool textChanged) {
+	auto ids = std::vector<FullMsgId>();
+	ids.reserve(_views.size());
+	for (const auto &entry : _views) {
+		ids.push_back(entry.first->fullId());
+	}
+	for (const auto &id : ids) {
+		if (const auto item = message(id)) {
+			if (textChanged) {
+				requestItemTextRefresh(item);
+			} else {
+				requestItemResize(item);
+			}
+		}
+	}
+}
+
 void Session::requestItemTextRefresh(not_null<HistoryItem*> item) {
 	const auto call = [&](not_null<HistoryItem*> item) {
 		enumerateItemViews(item, [&](not_null<ViewElement*> view) {

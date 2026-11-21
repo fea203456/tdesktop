@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/ui/dialogs_video_userpic.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "core/file_location.h"
 #include "data/data_peer.h"
 #include "data/data_photo.h"
@@ -165,7 +167,14 @@ void PaintUserpic(
 		int outerWidth,
 		int size,
 		bool paused) {
-	if (videoUserpic) {
+	if (::UiSandbox::Enabled(::UiSandbox::Option::SquareAvatars)) {
+		const auto image = PeerData::GenerateUserpicImage(
+			peer,
+			view,
+			size * style::DevicePixelRatio(),
+			0);
+		p.drawImage(QRect(rtl() ? outerWidth - x - size : x, y, size, size), image);
+	} else if (videoUserpic) {
 		videoUserpic->paintLeft(p, view, x, y, outerWidth, size, paused);
 	} else {
 		peer->paintUserpicLeft(p, view, x, y, outerWidth, size);

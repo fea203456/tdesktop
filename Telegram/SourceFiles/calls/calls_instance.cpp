@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "calls/calls_instance.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "calls/calls_call.h"
 #include "calls/group/calls_group_common.h"
 #include "calls/group/calls_choose_join_as.h"
@@ -203,6 +205,19 @@ Instance::~Instance() {
 void Instance::startOutgoingCall(
 		not_null<UserData*> user,
 		StartOutgoingCallArgs args) {
+	if (UiSandbox::Enabled(UiSandbox::Option::ConfirmCall) && !args.isConfirmed) {
+		const auto weak = base::make_weak(user.get());
+		Ui::show(Ui::MakeConfirmBox({
+			.text = u"Начать звонок: %1?"_q.arg(user->name()),
+			.confirmed = crl::guard(this, [=] {
+				if (const auto strong = weak.get()) {
+					startOutgoingCall(strong, { .video = args.video, .isConfirmed = true });
+				}
+			}),
+			.confirmText = rpl::single(u"Позвонить"_q),
+		}));
+		return;
+	}
 	if (activateCurrentCall()
 		|| (!args.isConfirmed && activateUnconfirmedCall(user))) {
 		return;

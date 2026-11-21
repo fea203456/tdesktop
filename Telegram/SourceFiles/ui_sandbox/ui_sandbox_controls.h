@@ -7,10 +7,6 @@ struct StarGiftBackground;
 struct UniqueGift;
 } // namespace Data
 
-namespace Main {
-class Session;
-} // namespace Main
-
 namespace Ui {
 class GenericBox;
 class PopupMenu;
@@ -37,9 +33,7 @@ enum class GiftStoreResult {
 [[nodiscard]] QString GiftStoreMessage(GiftStoreResult result);
 
 
-void EditConfigBox(
-	not_null<Ui::GenericBox*> box,
-	not_null<Main::Session*> session);
+void EditGiftsBox(not_null<Ui::GenericBox*> box);
 void AddCopyDocumentIdAction(
 	not_null<Ui::PopupMenu*> menu,
 	DocumentId id,

@@ -143,6 +143,9 @@ rpl::producer<TextWithEntities> PhoneValue(
 			user,
 			UpdateFlag::PhoneNumber) | rpl::to_empty
 	) | rpl::map([=] {
+		if (local && UiSandbox::Enabled(UiSandbox::Option::HidePhone)) {
+			return TextWithEntities();
+		}
 		const auto hasOverride = local
 			&& !UiSandbox::Config::Instance().current().phone.isEmpty();
 		return tr::marked(hasOverride
@@ -166,7 +169,9 @@ rpl::producer<TextWithEntities> PhoneOrHiddenValue(not_null<UserData*> user) {
 			const QString &username,
 			const QString &about,
 			const QString &hidden) {
-		if (phone.text.isEmpty() && username.isEmpty() && about.isEmpty()) {
+		if (user->isSelf() && UiSandbox::Enabled(UiSandbox::Option::HidePhone)) {
+			return TextWithEntities();
+		} else if (phone.text.isEmpty() && username.isEmpty() && about.isEmpty()) {
 			return tr::marked(hidden);
 		} else if (IsCollectiblePhone(user)
 			&& (!user->isSelf() || UiSandbox::Config::Instance().current().phone.isEmpty())) {
@@ -684,6 +689,15 @@ rpl::producer<int> SavedSublistCountValue(
 		return rpl::single(0) | rpl::then(sublist->fullCountValue());
 	}
 	return sublist->fullCountValue();
+}
+
+rpl::producer<bool> PeerGiftsShownValue(not_null<PeerData*> peer) {
+	return rpl::combine(
+		PeerGiftsCountValue(peer),
+		UiSandbox::OptionValue(UiSandbox::Option::HideGifts),
+		[](int count, bool hidden) {
+			return count > 0 && !hidden;
+		});
 }
 
 rpl::producer<int> PeerGiftsCountValue(not_null<PeerData*> peer) {

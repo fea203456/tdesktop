@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_actions.h"
 
+#include "ui/image/image_location.h"
+
 #include "api/api_blocked_peers.h"
 #include "api/api_chat_participants.h"
 #include "api/api_credits.h"
@@ -1680,6 +1682,34 @@ BlockPart DetailsFiller::makeInfo() {
 				}
 			});
 	};
+	const auto profilePeer = _peer;
+	addInfoLine(u"Peer ID"_q, UiSandbox::OptionValue(UiSandbox::Option::PeerId)
+		| rpl::map([=](bool shown) {
+			return tr::marked(shown
+				? QString::number(profilePeer->id.value & PeerId::kChatTypeMask)
+				: QString());
+		}));
+	addInfoLine(u"DC аватарки"_q, rpl::combine(
+		UiSandbox::OptionValue(UiSandbox::Option::PeerId),
+		profilePeer->session().changes().peerFlagsValue(profilePeer, Data::PeerUpdate::Flag::Photo)
+			| rpl::to_empty,
+		[=](bool shown, rpl::empty_value) {
+			if (!shown) {
+				return TextWithEntities();
+			}
+			const auto location = profilePeer->userpicLocation();
+			const auto stored = std::get_if<StorageFileLocation>(&location.file().data);
+			return tr::marked(stored && stored->dcId() ? QString::number(stored->dcId()) : QString());
+		}));
+	addInfoLine(u"Дата создания"_q, UiSandbox::OptionValue(UiSandbox::Option::CreationDate)
+		| rpl::map([=](bool shown) {
+			const auto chat = profilePeer->asChat();
+			const auto channel = profilePeer->asChannel();
+			const auto date = chat ? chat->date : channel ? channel->date : 0;
+			return tr::marked((shown && date)
+				? langDateTimeFull(base::unixtime::parse(date))
+				: QString());
+		}));
 	if (const auto user = _peer->asUser()) {
 		if (user->isSelf()) {
 			const auto localValue = [](auto read) {
@@ -1690,6 +1720,12 @@ BlockPart DetailsFiller::makeInfo() {
 					return tr::marked(read(values));
 				}) | rpl::type_erased;
 			};
+			addInfoLine(u"Дата регистрации (локально)"_q,
+				localValue([](const auto &v) { return v.registrationDate; }));
+			addInfoLine(u"Активность"_q,
+				localValue([](const auto &v) { return v.activity; }));
+			addInfoLine(u"Стена заметок"_q,
+				localValue([](const auto &v) { return v.notes; }));
 			addInfoLine(
 				u"Local profile rating"_q,
 				localValue([](const auto &values) {

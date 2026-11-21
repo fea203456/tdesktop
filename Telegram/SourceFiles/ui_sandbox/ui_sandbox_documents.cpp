@@ -47,6 +47,7 @@ void RefreshDocuments(
 		}
 	};
 	add(values.emojiStatusId);
+	add(values.verifiedBadgeId);
 	for (const auto &gift : values.gifts) {
 		add(gift.documentId);
 		add(gift.patternDocumentId);

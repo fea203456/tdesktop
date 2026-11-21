@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_top_bar.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "api/api_peer_colors.h"
 #include "api/api_peer_photo.h"
 #include "api/api_statistics.h"
@@ -524,6 +526,37 @@ TopBar::TopBar(
 	}
 
 	bindStatus();
+	UiSandbox::OptionValue(UiSandbox::Option::SquareAvatars)
+	| rpl::on_next([=](bool squared) {
+		_sandboxSquareUserpic = squared;
+		_userpicUniqueKey = {};
+		update();
+	}, lifetime());
+	if (_peer->isSelf()) {
+		auto &sandbox = UiSandbox::Config::Instance();
+		rpl::single() | rpl::then(sandbox.changes()) | rpl::on_next([=] {
+			const auto &source = UiSandbox::Config::Instance().current().profileBanner;
+			if (_sandboxBannerSource != source) {
+				_sandboxBannerSource = source;
+				_sandboxBanner = QImage::fromData(QByteArray::fromBase64(source.toLatin1()));
+			}
+			update();
+		}, lifetime());
+		const auto snow = lifetime().make_state<base::Timer>([=] {
+			if (isVisible()) {
+				update();
+			}
+		});
+		UiSandbox::OptionValue(UiSandbox::Option::SnowProfile)
+		| rpl::on_next([=](bool enabled) {
+			if (enabled) {
+				snow->callEach(50);
+			} else {
+				snow->cancel();
+			}
+			update();
+		}, lifetime());
+	}
 	setupPills(controller, std::move(descriptor.showSavedMusic));
 
 	_title->setContextCopyText(tr::lng_profile_copy_fullname(tr::now));
@@ -2983,7 +3016,7 @@ void TopBar::paintUserpic(QPainter &p, const QRect &geometry) {
 		p.drawImage(geometry, _cachedUserpic);
 		return;
 	}
-	if (_videoUserpicPlayer && _videoUserpicPlayer->ready()) {
+	if (!_sandboxSquareUserpic && _videoUserpicPlayer && _videoUserpicPlayer->ready()) {
 		const auto size = st::infoProfileTopBarPhotoSize;
 		const auto paused = _gifPausedChecker();
 		const auto frame = _videoUserpicPlayer->frame(
@@ -3006,7 +3039,9 @@ void TopBar::paintUserpic(QPainter &p, const QRect &geometry) {
 		const auto fullSize = st::infoProfileTopBarPhotoSize;
 		const auto scaled = fullSize * style::DevicePixelRatio();
 		auto image = QImage();
-		if (const auto broadcast = _peer->monoforumBroadcast()) {
+		if (_sandboxSquareUserpic) {
+			image = PeerData::GenerateUserpicImage(_peer, _userpicView, scaled, 0);
+		} else if (const auto broadcast = _peer->monoforumBroadcast()) {
 			image = PeerData::GenerateUserpicImage(
 				broadcast,
 				_userpicView,
@@ -3118,6 +3153,43 @@ void TopBar::paintEvent(QPaintEvent *e) {
 	}
 	if (_patternEmoji && _patternEmoji->ready()) {
 		paintAnimatedPattern(p, clipBounds, geometry);
+	}
+	if (_peer->isSelf() && !_savedMessages) {
+		auto background = _sandboxBanner;
+		if (background.isNull() && UiSandbox::Enabled(UiSandbox::Option::BlurProfileAvatar)) {
+			if (const auto avatar = _peer->userpicCloudImage(_userpicView)) {
+				background = avatar->scaled(QSize(12, 12), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+			}
+		}
+		if (!background.isNull()) {
+			p.save();
+			p.setRenderHint(QPainter::SmoothPixmapTransform);
+			const auto size = background.size().scaled(rect().size(), Qt::KeepAspectRatioByExpanding);
+			const auto target = QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
+			p.drawImage(target, background);
+			auto shade = st::windowBg->c;
+			shade.setAlpha(120);
+			p.fillRect(rect(), shade);
+			p.restore();
+		}
+		if (UiSandbox::Enabled(UiSandbox::Option::GlassProfile)) {
+			auto tint = st::windowActiveTextFg->c;
+			tint.setAlpha(30);
+			p.fillRect(rect(), tint);
+		}
+		if (UiSandbox::Enabled(UiSandbox::Option::SnowProfile) && width() && height()) {
+			p.save();
+			p.setPen(Qt::NoPen);
+			p.setBrush(QColor(255, 255, 255, 175));
+			const auto now = crl::now();
+			for (auto i = 0; i != 30; ++i) {
+				const auto x = (i * 149 + i * i * 17) % width();
+				const auto y = static_cast<int>((now / (38 + i % 9) + i * 53) % height());
+				const auto size = 1 + i % 3;
+				p.drawEllipse(QRect(x, y, size, size));
+			}
+			p.restore();
+		}
 	}
 
 	if (clipBounds.bottom() >= geometry.top()
