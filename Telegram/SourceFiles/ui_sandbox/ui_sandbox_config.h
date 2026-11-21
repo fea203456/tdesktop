@@ -5,7 +5,22 @@
 #include <QtCore/QStringList>
 #include <rpl/event_stream.h>
 
+#include <vector>
+
 namespace UiSandbox {
+
+struct GiftPreset {
+	uint64 documentId = 0;
+	QString title;
+	int num = 0;
+	QString centerColor;
+	QString edgeColor;
+	uint64 patternDocumentId = 0;
+
+	friend bool operator==(const GiftPreset &, const GiftPreset &) = default;
+};
+
+[[nodiscard]] bool IsGiftColor(const QString &value);
 
 struct Values {
 	bool premium = false;
@@ -15,6 +30,7 @@ struct Values {
 	QString username;
 	QStringList collectibleUsernames;
 	int rating = 0;
+	std::vector<GiftPreset> gifts;
 };
 
 class Config final {

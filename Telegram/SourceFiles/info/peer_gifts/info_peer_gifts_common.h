@@ -89,6 +89,7 @@ struct GiftTypeStars {
 	bool mine : 1 = false;
 	bool onCard : 1 = false;
 	bool silhouette : 1 = false;
+	bool localPreview : 1 = false;
 
 	[[nodiscard]] friend inline bool operator==(
 		const GiftTypeStars&,

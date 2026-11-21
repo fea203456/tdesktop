@@ -386,7 +386,7 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 			: data.from
 			? Ui::MakeUserpicThumbnail(data.from)
 			: Ui::MakeHiddenAuthorThumbnail();
-		if ((small() && !resale) || (_mode == Mode::Craft)) {
+		if (data.localPreview || (small() && !resale) || (_mode == Mode::Craft)) {
 			_price = {};
 			_stars.reset();
 			return;
@@ -438,12 +438,22 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 	refreshLocked();
 
 	_resolvedDocument = nullptr;
-	_documentLifetime = _delegate->sticker(
-		descriptor
-	) | rpl::on_next([=](not_null<DocumentData*> document) {
+	const auto resolved = [=](not_null<DocumentData*> document) {
 		_documentLifetime.destroy();
 		setDocument(document);
-	});
+	};
+	const auto stars = std::get_if<GiftTypeStars>(&descriptor);
+	if (stars && stars->localPreview && !stars->info.document->sticker()) {
+		const auto document = stars->info.document;
+		_player = nullptr;
+		_playerDocument = nullptr;
+		_createPlayer = nullptr;
+		_documentLifetime = document->owner().customEmojiManager().resolve(
+			document->id
+		) | rpl::on_next(resolved);
+	} else {
+		_documentLifetime = _delegate->sticker(descriptor) | rpl::on_next(resolved);
+	}
 	if (_resolvedDocument) {
 		_documentLifetime.destroy();
 	}
@@ -905,7 +915,7 @@ void GiftButton::cacheUniqueBackground(
 		not_null<Data::UniqueGift*> unique,
 		int width,
 		int height) {
-	if (!_uniquePatternEmoji) {
+	if (!_uniquePatternEmoji && unique->pattern.document->id) {
 		_uniquePatternEmoji = _delegate->buttonPatternEmoji(unique, [=] {
 			update();
 		});
@@ -929,7 +939,7 @@ void GiftButton::cacheUniqueBackground(
 		paintUniqueBackgroundGradient(p, unique, inner, radius);
 		_patterned = false;
 	}
-	if (!_patterned && _uniquePatternEmoji->ready()) {
+	if (!_patterned && _uniquePatternEmoji && _uniquePatternEmoji->ready()) {
 		_patterned = true;
 		auto p = QPainter(&_uniqueBackgroundCache);
 		paintUniqueBackgroundPattern(p, unique, inner);
@@ -1054,7 +1064,7 @@ void GiftButton::paint(QPainter &p, float64 craftProgress) {
 				inner,
 				int(base::SafeRound(st::giftBoxGiftRadius * roundedRatio)));
 
-			if (_uniquePatternEmoji->ready()) {
+			if (_uniquePatternEmoji && _uniquePatternEmoji->ready()) {
 				paintUniqueBackgroundPattern(p, unique, inner);
 				p.setClipping(false);
 			}
@@ -1228,6 +1238,15 @@ void GiftButton::paint(QPainter &p, float64 craftProgress) {
 		}
 		return GiftBadge();
 	}, [&](const GiftTypeStars &data) {
+		if (data.localPreview && unique) {
+			return GiftBadge{
+				.text = (unique->number > 0)
+					? ('#' + Lang::FormatCountDecimal(unique->number))
+					: u"Local"_q,
+				.bg1 = unique->backdrop.edgeColor,
+				.fg = unique->backdrop.textColor,
+			};
+		}
 		const auto count = data.info.limitedCount;
 		const auto pinned = data.pinned || data.pinnedSelection;
 		const auto now = base::unixtime::now();

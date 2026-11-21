@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_values.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "api/api_chat_participants.h"
 #include "apiwrap.h"
 #include "info/profile/info_profile_phone_menu.h"
@@ -673,11 +675,21 @@ rpl::producer<int> SavedSublistCountValue(
 }
 
 rpl::producer<int> PeerGiftsCountValue(not_null<PeerData*> peer) {
-	return peer->session().changes().peerFlagsValue(
+	auto server = peer->session().changes().peerFlagsValue(
 		peer,
 		UpdateFlag::PeerGifts
-	) | rpl::map([=] {
-		return peer->peerGiftsCount();
+	) | rpl::to_empty;
+	auto updates = peer->isSelf()
+		? (rpl::merge(
+			std::move(server),
+			UiSandbox::Config::Instance().changes()
+		) | rpl::type_erased)
+		: (std::move(server) | rpl::type_erased);
+	return std::move(updates) | rpl::map([=] {
+		const auto local = peer->isSelf()
+			? static_cast<int>(UiSandbox::Config::Instance().current().gifts.size())
+			: 0;
+		return peer->peerGiftsCount() + local;
 	});
 }
 

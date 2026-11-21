@@ -36,6 +36,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/popup_menu.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/wrap/slide_wrap.h"
+#include "ui/wrap/padding_wrap.h"
+#include "ui_sandbox/ui_sandbox_config.h"
+#include "ui_sandbox/ui_sandbox_controls.h"
 #include "ui/ui_utility.h"
 #include "ui/effects/animations.h"
 #include "lang/lang_keys.h"
@@ -84,6 +87,32 @@ constexpr auto kPreloadButtonRows = 2;
 		.pinned = gift.pinned,
 		.hidden = gift.hidden,
 		.mine = to->isSelf(),
+	};
+}
+
+[[nodiscard]] Data::SavedStarGift LocalGift(
+		not_null<PeerData*> peer,
+		const UiSandbox::GiftPreset &preset) {
+	auto &owner = peer->owner();
+	const auto document = owner.document(preset.documentId);
+	const auto center = QColor(preset.centerColor);
+	const auto edge = QColor(preset.edgeColor);
+	return {
+		.info = {
+			.unique = std::make_shared<Data::UniqueGift>(Data::UniqueGift{
+				.title = preset.title,
+				.number = preset.num,
+				.model = { {}, document },
+				.pattern = { {}, owner.document(preset.patternDocumentId) },
+				.backdrop = {
+					.centerColor = center,
+					.edgeColor = edge,
+					.patternColor = center.lighter(),
+					.textColor = QColor(Qt::white),
+				},
+			}),
+			.document = document,
+		},
 	};
 }
 
@@ -177,6 +206,7 @@ private:
 		Data::SavedStarGiftId manageId;
 		uint64 giftId = 0;
 		int index = 0;
+		bool local = false;
 	};
 	struct DragState {
 		bool enabled = false;
@@ -218,6 +248,9 @@ private:
 	void loaded(const MTPpayments_SavedStarGifts &result);
 	void markInCollection(const Data::SavedStarGift &gift);
 	void refreshButtons();
+	void refreshLocalGifts();
+	[[nodiscard]] int displayCount() const;
+	[[nodiscard]] bool localIndex(int index) const;
 	void validateButtons();
 	[[nodiscard]] std::unique_ptr<GiftButton> createGiftButton();
 	void showGift(int index);
@@ -272,6 +305,8 @@ private:
 	std::map<int, Entries> _perCollection;
 	not_null<Entries*> _entries;
 	not_null<std::vector<Entry>*> _list;
+	std::vector<Entry> _localGifts;
+	std::vector<UiSandbox::GiftPreset> _localPresets;
 	rpl::variable<Data::GiftsUpdate> _collectionChanges;
 	base::flat_set<Data::SavedStarGiftId> _inCollection;
 
@@ -400,6 +435,13 @@ InnerWidget::InnerWidget(
 		process(_all);
 	}, lifetime());
 
+	if (_peer->isSelf() && !_addingToCollectionId) {
+		UiSandbox::Config::Instance().changes(
+		) | rpl::on_next([=] {
+			refreshLocalGifts();
+		}, lifetime());
+	}
+
 	_descriptor.value(
 	) | rpl::on_next([=](Descriptor now) {
 		switchTo(now.collectionId);
@@ -417,6 +459,7 @@ void InnerWidget::switchTo(int collectionId) {
 	_api.request(base::take(_loadMoreRequestId)).cancel();
 	_entries = entries;
 	_list = &_entries->list;
+	refreshLocalGifts();
 	refreshButtons();
 	refreshAbout();
 	loadMore();
@@ -790,6 +833,38 @@ void InnerWidget::markInCollection(const Data::SavedStarGift &gift) {
 	}
 }
 
+void InnerWidget::refreshLocalGifts() {
+	const auto descriptor = _descriptor.current();
+	const auto active = _peer->isSelf()
+		&& !_addingToCollectionId
+		&& !descriptor.collectionId
+		&& descriptor.filter == Filter();
+	const auto presets = active
+		? UiSandbox::Config::Instance().current().gifts
+		: std::vector<UiSandbox::GiftPreset>();
+	if (_localPresets == presets) {
+		return;
+	}
+	_localPresets = presets;
+	_localGifts.clear();
+	_localGifts.reserve(_localPresets.size());
+	for (const auto &preset : _localPresets) {
+		auto gift = LocalGift(_peer, preset);
+		auto display = GiftTypeStars{ .info = gift.info, .localPreview = true };
+		_localGifts.push_back({ std::move(gift), std::move(display) });
+	}
+	cancelDragging();
+	refreshAbout();
+}
+
+int InnerWidget::displayCount() const {
+	return static_cast<int>(_list->size() + _localGifts.size());
+}
+
+bool InnerWidget::localIndex(int index) const {
+	return index >= static_cast<int>(_list->size()) && index < displayCount();
+}
+
 void InnerWidget::refreshButtons() {
 	_viewsForWidth = 0;
 	_viewsFromRow = 0;
@@ -837,7 +912,7 @@ void InnerWidget::validateButtons() {
 		? (padding.top() + _collectionsTabs->height() + padding.top())
 		: padding.bottom();
 	const auto row = _single.height() + st::giftBoxGiftSkip.y();
-	const auto totalRows = (int(_list->size()) + _perRow - 1) / _perRow;
+	const auto totalRows = (displayCount() + _perRow - 1) / _perRow;
 	const auto fromRow = std::clamp(
 		(std::max(_visibleFrom - vskip, 0) / row) - kPreloadButtonRows,
 		0,
@@ -880,20 +955,27 @@ void InnerWidget::validateButtons() {
 	};
 	const auto add = [&](int column, int row) {
 		const auto index = row * _perRow + column;
-		if (index >= _list->size()) {
+		if (index >= displayCount()) {
 			return false;
 		}
-		const auto &entry = (*_list)[index];
+		const auto local = localIndex(index);
+		const auto &entry = local
+			? _localGifts[static_cast<size_t>(index) - _list->size()]
+			: (*_list)[index];
 		const auto &gift = entry.gift;
 		const auto giftId = gift.info.id;
 		const auto manageId = gift.manageId;
 		const auto &descriptor = entry.descriptor;
-		const auto already = ranges::find(_views, giftId, &View::giftId);
+		const auto already = ranges::find_if(_views, [&](const View &view) {
+			return view.button && (local
+				? (view.local && view.index == index)
+				: (!view.local && view.giftId == giftId));
+		});
 		if (already != end(_views)) {
 			views.push_back(base::take(*already));
 		} else {
 			const auto unused = ranges::find_if(_views, [&](const View &v) {
-				return v.button && !idUsed(v.giftId, column, row);
+				return v.button && (v.local || !idUsed(v.giftId, column, row));
 			});
 			if (unused != end(_views)) {
 				views.push_back(base::take(*unused));
@@ -903,6 +985,7 @@ void InnerWidget::validateButtons() {
 		}
 		auto &view = views.back();
 		view.index = index;
+		view.local = local;
 		view.manageId = manageId;
 		view.giftId = giftId;
 		if (_addingToCollectionId) {
@@ -1220,6 +1303,14 @@ void InnerWidget::showMenuFor(not_null<GiftButton*> button, QPoint point) {
 		return;
 	}
 
+	if (localIndex(index)) {
+		const auto &entry = _localGifts[static_cast<size_t>(index) - _list->size()];
+		_menu = base::make_unique_q<Ui::PopupMenu>(this, st::popupMenuWithIcons);
+		UiSandbox::AddCopyDocumentIdAction(_menu.get(), entry.gift.info.document->id);
+		_menu->popup(point);
+		return;
+	}
+
 	auto entry = ::Settings::SavedStarGiftEntry(
 		_peer,
 		(*_list)[index].gift);
@@ -1266,8 +1357,37 @@ void InnerWidget::showMenuFor(not_null<GiftButton*> button, QPoint point) {
 }
 
 void InnerWidget::showGift(int index) {
-	Expects(index >= 0 && index < _list->size());
+	Expects(index >= 0 && index < displayCount());
 
+	if (localIndex(index)) {
+		const auto &entry = _localGifts[static_cast<size_t>(index) - _list->size()];
+		const auto descriptor = entry.descriptor;
+		const auto gift = entry.gift.info.unique;
+		const auto session = &_window->session();
+		_window->uiShow()->show(Box([=](not_null<Ui::GenericBox*> box) {
+			box->setTitle(rpl::single(gift->number > 0
+				? Data::UniqueGiftName(*gift)
+				: gift->title));
+			const auto delegate = box->lifetime().make_state<Delegate>(
+				session,
+				GiftButtonMode::Minimal);
+			const auto size = delegate->buttonSize();
+			const auto extend = delegate->buttonExtend();
+			const auto row = box->addRow(object_ptr<Ui::FixedHeightWidget>(
+				box,
+				size.height() + extend.top() + extend.bottom()));
+			const auto button = Ui::CreateChild<GiftButton>(row, delegate);
+			button->setDescriptor(descriptor, GiftButtonMode::Minimal);
+			row->widthValue() | rpl::on_next([=](int width) {
+				button->setGeometry(
+					QRect(QPoint((width - size.width()) / 2, extend.top()), size),
+					extend);
+			}, button->lifetime());
+			box->addRow(object_ptr<Ui::FlatLabel>(box, u"Локальный подарок"_q));
+			box->addButton(tr::lng_close(), [=] { box->closeBox(); });
+		}));
+		return;
+	}
 	if (const auto id = _addingToCollectionId) {
 		const auto &gift = (*_list)[index].gift;
 		auto changes = _collectionChanges.current();
@@ -1312,7 +1432,7 @@ void InnerWidget::refreshAbout() {
 	const auto descriptor = _descriptor.current();
 	const auto filter = descriptor.filter;
 	const auto collectionId = descriptor.collectionId;
-	const auto maybeEmpty = _list->empty();
+	const auto maybeEmpty = (displayCount() == 0);
 	const auto knownEmpty = maybeEmpty
 		&& (_entries->allLoaded || !_entries->total);
 	const auto filteredEmpty = knownEmpty && filter.skipsSomething();
@@ -1750,7 +1870,7 @@ void InnerWidget::collectionRemoved(int id) {
 
 int InnerWidget::resizeGetHeight(int width) {
 	const auto padding = st::giftBoxPadding;
-	const auto count = int(_list->size());
+	const auto count = displayCount();
 	const auto available = width - padding.left() - padding.right();
 	const auto skipw = st::giftBoxGiftSkip.x();
 	_perRow = std::min(
@@ -1987,10 +2107,13 @@ void InnerWidget::mousePressEvent(QMouseEvent *e) {
 		return;
 	}
 	const auto index = giftFromGlobalPos(e->globalPos());
-	if (index < 0 || index >= _list->size()) {
+	if (index < 0) {
 		return;
 	}
 	_pressedIndex = index;
+	if (localIndex(index)) {
+		return;
+	}
 	const auto collectionId = _descriptor.current().collectionId;
 	const auto canDrag = !_addingToCollectionId
 		&& _peer->canManageGifts()
@@ -2301,7 +2424,7 @@ int InnerWidget::giftFromGlobalPos(const QPoint &p) const {
 		: -1;
 	if (row >= 0 && col >= 0 && col < _perRow) {
 		const auto result = row * _perRow + col;
-		return (result < _list->size()) ? result : -1;
+		return (result < displayCount()) ? result : -1;
 	}
 	return -1;
 }
