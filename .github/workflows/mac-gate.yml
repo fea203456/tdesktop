@@ -3,9 +3,6 @@
 name: Private macOS gate.
 
 on:
-  push:
-    branches:
-      - 'mac-gate-*'
   workflow_dispatch:
 
 concurrency:
