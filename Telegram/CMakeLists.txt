@@ -870,6 +870,8 @@ PRIVATE
     data/data_unread_value.cpp
     data/data_unread_value.h
     data/data_user.cpp
+    ui_sandbox/ui_sandbox_config.cpp
+    ui_sandbox/ui_sandbox_config.h
     data/data_user.h
     data/data_user_photos.cpp
     data/data_user_photos.h

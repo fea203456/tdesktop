@@ -67,6 +67,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/profile/info_profile_phone_menu.h"
 #include "info/profile/info_profile_text.h"
 #include "info/profile/info_profile_values.h"
+#include "ui_sandbox/ui_sandbox_config.h"
 #include "info/profile/info_profile_widget.h"
 #include "info/info_controller.h"
 #include "info/info_memento.h"
@@ -1680,6 +1681,67 @@ BlockPart DetailsFiller::makeInfo() {
 			});
 	};
 	if (const auto user = _peer->asUser()) {
+		if (user->isSelf()) {
+			const auto localValue = [](auto read) {
+				return rpl::single() | rpl::then(
+					UiSandbox::Config::Instance().changes()
+				) | rpl::map([=] {
+					const auto &values = UiSandbox::Config::Instance().current();
+					return tr::marked(read(values));
+				}) | rpl::type_erased;
+			};
+			addInfoLine(
+				u"Local profile rating"_q,
+				localValue([](const auto &values) {
+					return (values.rating > 0)
+						? QString::number(values.rating)
+						: QString();
+				}));
+			addInfoLine(
+				u"Local badges"_q,
+				localValue([=](const auto &values) {
+					auto badges = QStringList();
+					if (values.premium && user->isPremiumForDisplay()) {
+						badges.push_back(u"Premium"_q);
+					}
+					if (values.verified && user->isVerifiedForDisplay()) {
+						badges.push_back(u"Verified"_q);
+					}
+					return badges.join(u", "_q);
+				}));
+			addInfoLine(
+				u"Local emoji status ID"_q,
+				localValue([=](const auto &values) {
+					return values.emojiStatusId
+						? QString::number(user->emojiStatusIdForDisplay().documentId)
+						: QString();
+				}));
+			addInfoLine(u"Local phone"_q, PhoneWithSpoilerValue(
+				user,
+				localValue([=](const auto &values) {
+					return values.phone.isEmpty()
+						? QString()
+						: user->phoneForDisplay();
+				})));
+			addInfoLine(
+				u"Local username"_q,
+				localValue([=](const auto &values) {
+					return values.username.isEmpty()
+						? QString()
+						: user->usernameForDisplay();
+				}));
+			addInfoLine(
+				u"Local collectible usernames"_q,
+				localValue([=](const auto &values) {
+					auto names = QStringList();
+					if (!values.collectibleUsernames.isEmpty()) {
+						for (const auto &name : user->usernamesForDisplay()) {
+							names.push_back(name);
+						}
+					}
+					return names.join(u", "_q);
+				}));
+		}
 		if (user->session().supportMode()) {
 			addInfoLineGeneric(
 				user->session().supportHelper().infoLabelValue(user),

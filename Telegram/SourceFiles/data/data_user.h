@@ -210,6 +210,13 @@ public:
 	[[nodiscard]] bool isScam() const;
 	[[nodiscard]] bool isFake() const;
 	[[nodiscard]] bool isPremium() const;
+
+	[[nodiscard]] bool isPremiumForDisplay() const;
+	[[nodiscard]] bool isVerifiedForDisplay() const;
+	[[nodiscard]] EmojiStatusId emojiStatusIdForDisplay() const;
+	[[nodiscard]] QString phoneForDisplay() const;
+	[[nodiscard]] QString usernameForDisplay() const;
+	[[nodiscard]] std::vector<QString> usernamesForDisplay() const;
 	[[nodiscard]] bool isBotInlineGeo() const;
 	[[nodiscard]] bool isBot() const;
 	[[nodiscard]] bool isSupport() const;

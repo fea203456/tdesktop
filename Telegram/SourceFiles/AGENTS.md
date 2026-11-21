@@ -26,6 +26,10 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 
 ## Core
 
+### ui-sandbox — local UI overrides
+- Paths: `SourceFiles/ui_sandbox/`
+- Stores local presentation preferences and publishes changes on the UI thread. It does not own account data or network requests.
+
 ### core — application lifetime and process-wide services
 - Paths: `SourceFiles/core/`, `SourceFiles/main.cpp`, `SourceFiles/logs*`, `SourceFiles/settings.*`, `SourceFiles/config.h`, `SourceFiles/stdafx.h`, `SourceFiles/tray*`, `SourceFiles/data/raw/`
 - `Core::Application` and startup (`Launcher`, `Sandbox`), app and proxy settings, crash reports, shortcuts, file and mime utilities, the lib_base and lib_ui integration, logging, the tray menu, geolocation and screenshot protection. It must not own link routing, self-update or any feature.

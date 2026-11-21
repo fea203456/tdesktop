@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_user.h"
+#include "ui_sandbox/ui_sandbox_config.h"
 
 #include "api/api_credits.h"
 #include "api/api_global_privacy.h"
@@ -636,6 +637,53 @@ void UserData::addFlags(UserDataFlags which) {
 
 void UserData::removeFlags(UserDataFlags which) {
 	setFlags(flags() & ~which);
+}
+
+bool UserData::isPremiumForDisplay() const {
+	return isPremium()
+		|| (isSelf() && UiSandbox::Config::Instance().current().premium);
+}
+
+bool UserData::isVerifiedForDisplay() const {
+	return isVerified()
+		|| (isSelf() && UiSandbox::Config::Instance().current().verified);
+}
+
+EmojiStatusId UserData::emojiStatusIdForDisplay() const {
+	const auto local = isSelf()
+		? UiSandbox::Config::Instance().current().emojiStatusId
+		: DocumentId(0);
+	return local ? EmojiStatusId{ local, {} } : emojiStatusId();
+}
+
+QString UserData::phoneForDisplay() const {
+	if (isSelf()) {
+		const auto &local = UiSandbox::Config::Instance().current().phone;
+		if (!local.isEmpty()) {
+			return local;
+		}
+	}
+	return phone();
+}
+
+QString UserData::usernameForDisplay() const {
+	if (isSelf()) {
+		const auto &local = UiSandbox::Config::Instance().current().username;
+		if (!local.isEmpty()) {
+			return local;
+		}
+	}
+	return username();
+}
+
+std::vector<QString> UserData::usernamesForDisplay() const {
+	if (isSelf()) {
+		const auto &local = UiSandbox::Config::Instance().current().collectibleUsernames;
+		if (!local.isEmpty()) {
+			return std::vector<QString>(local.begin(), local.end());
+		}
+	}
+	return usernames();
 }
 
 bool UserData::isVerified() const {
