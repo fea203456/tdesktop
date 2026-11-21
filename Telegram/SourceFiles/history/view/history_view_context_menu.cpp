@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_context_menu.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "api/api_attached_stickers.h"
 #include "api/api_editing.h"
 #include "api/api_global_privacy.h"
@@ -437,6 +439,9 @@ void AddDocumentActions(
 		not_null<DocumentData*> document,
 		HistoryItem *item,
 		not_null<ListWidget*> list) {
+	if (document->sticker()) {
+		UiSandbox::AddCopyDocumentIdAction(menu, document->id);
+	}
 	if (document->loading()) {
 		menu->addAction(tr::lng_context_cancel_download(tr::now), [=] {
 			document->cancel();
@@ -1941,6 +1946,21 @@ void FillContextMenuItems(
 
 	const auto wasAmount = result->actions().size();
 	if (const auto textItem = view ? view->textItem() : item) {
+		auto emojiIds = std::vector<DocumentId>();
+		for (const auto &entity : textItem->originalText().entities) {
+			if (entity.type() == EntityType::CustomEmoji) {
+				const auto id = Data::ParseCustomEmojiData(entity.data());
+				if (id && !ranges::contains(emojiIds, id)) {
+					emojiIds.push_back(id);
+				}
+			}
+		}
+		for (const auto id : emojiIds) {
+			UiSandbox::AddCopyDocumentIdAction(
+				result,
+				id,
+				emojiIds.size() > 1);
+		}
 		AddEmojiPacksAction(
 			result,
 			textItem,

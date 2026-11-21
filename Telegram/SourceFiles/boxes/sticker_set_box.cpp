@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/sticker_set_box.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "api/api_common.h"
 #include "api/api_stickers_creator.h"
 #include "api/api_toggling_media.h"
@@ -1751,13 +1753,18 @@ auto StickerSetBox::Inner::messageSentAnimationInfo(
 void StickerSetBox::Inner::contextMenuEvent(QContextMenuEvent *e) {
 	const auto index = stickerFromGlobalPos(e->globalPos());
 	const auto chosenDocument = elementDocument(index);
-	if (!chosenDocument || setType() == Data::StickersType::Masks) {
+	if (!chosenDocument) {
 		return;
 	}
 	_previewTimer.cancel();
 	_menu = base::make_unique_q<Ui::PopupMenu>(
 		this,
 		st::popupMenuWithIcons);
+	UiSandbox::AddCopyDocumentIdAction(_menu.get(), chosenDocument->id);
+	if (setType() == Data::StickersType::Masks) {
+		_menu->popup(e->globalPos());
+		return;
+	}
 	const auto details = _show->sendMenuDetails();
 	if (setType() == Data::StickersType::Emoji) {
 		EmojiStatusMenu::AddSetAsStatusAction(

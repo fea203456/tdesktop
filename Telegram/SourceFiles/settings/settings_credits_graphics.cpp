@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/settings_credits_graphics.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "api/api_chat_invite.h"
 #include "api/api_credits.h"
 #include "api/api_earn.h"
@@ -1179,6 +1181,9 @@ void FillUniqueGiftMenu(
 		&& !e.converted;
 
 	const auto unique = e.uniqueGift;
+	UiSandbox::AddCopyDocumentIdAction(
+		menu,
+		unique ? unique->model.document->id : e.bareGiftStickerId);
 	if (unique
 		&& canToggle
 		&& e.savedToProfile

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/stickers_list_widget.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "base/options.h"
 #include "base/timer_rpl.h"
 #include "base/platform/base_platform_info.h"
@@ -3079,6 +3081,7 @@ base::unique_qptr<Ui::PopupMenu> StickersListWidget::fillContextMenu(
 	auto menu = base::make_unique_q<Ui::PopupMenu>(this, st().menu);
 
 	const auto document = set.stickers[sticker->index].document;
+	UiSandbox::AddCopyDocumentIdAction(menu.get(), document->id);
 	const auto send = crl::guard(this, [=](Api::SendOptions options) {
 		_chosen.fire({
 			.document = document,

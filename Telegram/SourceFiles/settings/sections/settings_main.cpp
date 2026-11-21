@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_main.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "settings/settings_common_session.h"
 
 #include "api/api_cloud_password.h"
@@ -432,6 +434,14 @@ void BuildSectionButtons(SectionBuilder &builder) {
 			.shown = std::move(shownProducer),
 		});
 	}
+
+	builder.addButton({
+		.id = u"main/ui_sandbox"_q,
+		.title = rpl::single(u"UI Sandbox"_q),
+		.icon = { &st::menuIconManage },
+		.onClick = [=] { controller->show(Box(UiSandbox::EditConfigBox)); },
+		.keywords = { u"sandbox"_q, u"overlay"_q, u"theme"_q },
+	});
 
 	builder.addSectionButton({
 		.title = tr::lng_settings_advanced(),

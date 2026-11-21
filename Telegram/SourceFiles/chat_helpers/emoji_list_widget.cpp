@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/emoji_list_widget.h"
 
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "window/window_media_preview.h"
 #include "api/api_peer_photo.h"
 #include "apiwrap.h"
@@ -2029,6 +2031,10 @@ base::unique_qptr<Ui::PopupMenu> EmojiListWidget::fillContextMenu(
 		(_mode == Mode::Full
 			? st().menu
 			: st::defaultPopupMenu));
+	const auto custom = lookupCustomEmoji(over);
+	if (const auto document = custom.document) {
+		UiSandbox::AddCopyDocumentIdAction(menu.get(), document->id);
+	}
 	if (_mode == Mode::Full) {
 		fillRecentMenu(menu, section, index);
 	} else if (_mode == Mode::EmojiStatus || _mode == Mode::ChannelStatus) {
