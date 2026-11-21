@@ -78,7 +78,7 @@ void RefreshDocuments(
 		};
 		owner.customEmojiManager().resolve(
 			id,
-			true
+			Data::CustomEmojiManager::ResolvePolicy::RemoteSticker
 		) | rpl::on_next_error([=](not_null<DocumentData*> result) {
 			if (state->active && state->wanted.contains(id)) {
 				KeepMedia(state.get(), result);

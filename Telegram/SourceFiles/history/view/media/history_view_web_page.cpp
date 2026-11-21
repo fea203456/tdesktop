@@ -369,7 +369,9 @@ void WebPage::setupAdditionalData() {
 				view->initSize(box);
 				raw->views.push_back(std::move(view));
 			} else {
-				manager.resolve(id, this);
+				manager.resolve(
+					id,
+					static_cast<Data::CustomEmojiManager::Listener*>(this));
 				_composeToneListening = 1;
 			}
 		}

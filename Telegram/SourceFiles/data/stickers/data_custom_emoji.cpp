@@ -688,10 +688,9 @@ void CustomEmojiManager::unregisterListener(not_null<Listener*> listener) {
 	}
 }
 
-auto CustomEmojiManager::resolve(
-		DocumentId documentId,
-		bool requireRemote)
+auto CustomEmojiManager::resolve(DocumentId documentId, ResolvePolicy policy)
 -> rpl::producer<not_null<DocumentData*>, rpl::empty_error> {
+	const auto requireRemote = (policy == ResolvePolicy::RemoteSticker);
 	return [=](auto consumer) {
 		auto result = rpl::lifetime();
 		const auto put = [=](

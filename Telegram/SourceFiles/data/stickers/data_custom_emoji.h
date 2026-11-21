@@ -69,7 +69,13 @@ public:
 		bool requireRemote = false);
 	void unregisterListener(not_null<Listener*> listener);
 
-	[[nodiscard]] auto resolve(DocumentId documentId, bool requireRemote = false)
+	enum class ResolvePolicy {
+		Sticker,
+		RemoteSticker,
+	};
+	[[nodiscard]] auto resolve(
+		DocumentId documentId,
+		ResolvePolicy policy = ResolvePolicy::Sticker)
 		-> rpl::producer<not_null<DocumentData*>, rpl::empty_error>;
 
 	[[nodiscard]] std::unique_ptr<Ui::CustomEmoji::Loader> createLoader(
