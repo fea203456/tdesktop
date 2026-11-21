@@ -63,10 +63,13 @@ public:
 			not_null<DocumentData*> document) = 0;
 	};
 	void resolve(QStringView data, not_null<Listener*> listener);
-	void resolve(DocumentId documentId, not_null<Listener*> listener);
+	void resolve(
+		DocumentId documentId,
+		not_null<Listener*> listener,
+		bool requireRemote = false);
 	void unregisterListener(not_null<Listener*> listener);
 
-	[[nodiscard]] auto resolve(DocumentId documentId)
+	[[nodiscard]] auto resolve(DocumentId documentId, bool requireRemote = false)
 		-> rpl::producer<not_null<DocumentData*>, rpl::empty_error>;
 
 	[[nodiscard]] std::unique_ptr<Ui::CustomEmoji::Loader> createLoader(
@@ -118,6 +121,7 @@ private:
 
 	void request();
 	void requestFinished();
+	void queueDocument(DocumentId id);
 	void repaintLater(
 		not_null<Ui::CustomEmoji::Instance*> instance,
 		Ui::CustomEmoji::RepaintRequest request);
@@ -165,6 +169,7 @@ private:
 		not_null<Listener*>,
 		base::flat_set<DocumentId>> _listeners;
 	base::flat_set<DocumentId> _pendingForRequest;
+	base::flat_set<DocumentId> _inFlight;
 
 	mtpRequestId _requestId = 0;
 

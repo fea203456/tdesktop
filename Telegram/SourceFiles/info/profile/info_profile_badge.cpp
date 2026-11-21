@@ -7,10 +7,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_badge.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "data/data_changes.h"
 #include "data/data_emoji_statuses.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
+#include "data/data_document.h"
 #include "data/data_user.h"
 #include "data/stickers/data_custom_emoji.h"
 #include "info/profile/info_profile_values.h"
@@ -276,10 +279,39 @@ Data::CustomEmojiSizeTag Badge::sizeTag() const {
 
 rpl::producer<Badge::Content> BadgeContentForPeer(not_null<PeerData*> peer) {
 	const auto statusOnlyForPremium = peer->isUser();
+	auto localStatus = rpl::single(EmojiStatusId()) | rpl::type_erased;
+	if (peer->isSelf()) {
+		auto &config = UiSandbox::Config::Instance();
+		localStatus = rpl::merge(
+			rpl::single(),
+			config.changes(),
+			peer->barSettingsValue() | rpl::to_empty,
+			config.documentChanges() | rpl::filter([=](UiSandbox::DocumentUpdate update) {
+				return update.session == &peer->session()
+					&& update.id == UiSandbox::Config::Instance().current().emojiStatusId;
+			}) | rpl::to_empty
+		) | rpl::map([=] {
+			const auto id = UiSandbox::Config::Instance().current().emojiStatusId;
+			if (id && !peer->hideEmojiStatus()) {
+				const auto document = peer->owner().document(id);
+				if (document->sticker() && document->hasRemoteLocation()) {
+					return EmojiStatusId{ id, {} };
+				}
+			}
+			return EmojiStatusId();
+		}) | rpl::distinct_until_changed() | rpl::type_erased;
+	}
 	return rpl::combine(
 		BadgeValue(peer),
-		ShownEmojiStatusIdValue(peer)
-	) | rpl::map([=](BadgeType badge, EmojiStatusId emojiStatusId) {
+		ShownEmojiStatusIdValue(peer),
+		std::move(localStatus)
+	) | rpl::map([=](
+			BadgeType badge,
+			EmojiStatusId emojiStatusId,
+			EmojiStatusId local) {
+		if (local) {
+			return Badge::Content{ BadgeType::Premium, local };
+		}
 		if (emojiStatusId.collectible && (badge == BadgeType::Verified)) {
 			return Badge::Content{ BadgeType::Premium, emojiStatusId };
 		}

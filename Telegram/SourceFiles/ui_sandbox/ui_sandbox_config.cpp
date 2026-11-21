@@ -87,6 +87,14 @@ rpl::producer<> Config::changes() const {
 	return _changes.events();
 }
 
+rpl::producer<DocumentUpdate> Config::documentChanges() const {
+	return _documentChanges.events();
+}
+
+void Config::notifyDocumentChanged(DocumentUpdate update) {
+	_documentChanges.fire(std::move(update));
+}
+
 bool Config::reload() {
 	auto file = QFile(ConfigPath());
 	if (!file.exists()) {

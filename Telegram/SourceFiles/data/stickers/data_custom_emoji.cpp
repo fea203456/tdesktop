@@ -654,14 +654,23 @@ void CustomEmojiManager::resolve(
 
 void CustomEmojiManager::resolve(
 		DocumentId documentId,
-		not_null<Listener*> listener) {
-	if (_owner->document(documentId)->sticker()) {
+		not_null<Listener*> listener,
+		bool requireRemote) {
+	const auto document = _owner->document(documentId);
+	if (document->sticker()
+		&& (!requireRemote || document->hasRemoteLocation())) {
 		return;
 	}
 	_resolvers[documentId].emplace(listener);
 	_listeners[listener].emplace(documentId);
-	_pendingForRequest.emplace(documentId);
-	if (!_requestId && _pendingForRequest.size() == 1) {
+	queueDocument(documentId);
+}
+
+void CustomEmojiManager::queueDocument(DocumentId id) {
+	if (!_inFlight.contains(id)
+		&& _pendingForRequest.emplace(id).second
+		&& !_requestId
+		&& _pendingForRequest.size() == 1) {
 		crl::on_main(this, [=] { request(); });
 	}
 }
@@ -679,14 +688,17 @@ void CustomEmojiManager::unregisterListener(not_null<Listener*> listener) {
 	}
 }
 
-auto CustomEmojiManager::resolve(DocumentId documentId)
+auto CustomEmojiManager::resolve(
+		DocumentId documentId,
+		bool requireRemote)
 -> rpl::producer<not_null<DocumentData*>, rpl::empty_error> {
 	return [=](auto consumer) {
 		auto result = rpl::lifetime();
 		const auto put = [=](
 				not_null<DocumentData*> document,
 				bool resolved = true) {
-			if (!document->sticker()) {
+			if (!document->sticker()
+				|| (requireRemote && !document->hasRemoteLocation())) {
 				if (resolved) {
 					consumer.put_error({});
 				}
@@ -697,7 +709,7 @@ auto CustomEmojiManager::resolve(DocumentId documentId)
 		};
 		if (!put(owner().document(documentId), false)) {
 			const auto listener = result.make_state<CallbackListener>(put);
-			resolve(documentId, listener);
+			resolve(documentId, listener, requireRemote);
 			result.add([=] {
 				unregisterListener(listener);
 			});
@@ -756,10 +768,7 @@ auto CustomEmojiManager::createLoaderWithSetId(
 	} else {
 		const auto i = SizeIndex(tag);
 		_loaders[i][documentId].push_back(base::make_weak(result));
-		_pendingForRequest.emplace(documentId);
-		if (!_requestId && _pendingForRequest.size() == 1) {
-			crl::on_main(this, [=] { request(); });
-		}
+		queueDocument(documentId);
 	}
 	return { std::move(result), uint64(), false };
 }
@@ -776,6 +785,7 @@ void CustomEmojiManager::request() {
 	while (!_pendingForRequest.empty() && ids.size() < kMaxPerRequest) {
 		const auto i = _pendingForRequest.end() - 1;
 		ids.push_back(MTP_long(*i));
+		_inFlight.emplace(*i);
 		_pendingForRequest.erase(i);
 	}
 	if (ids.isEmpty()) {
@@ -791,6 +801,9 @@ void CustomEmojiManager::request() {
 			processLoaders(document);
 			processListeners(document);
 			requestSetFor(document);
+		}
+		for (const auto &id : ids) {
+			processListeners(_owner->document(id.v));
 		}
 		requestFinished();
 	}).fail([=] {
@@ -875,6 +888,7 @@ int CustomEmojiManager::SizeIndex(SizeTag tag) {
 }
 
 void CustomEmojiManager::requestFinished() {
+	_inFlight.clear();
 	_requestId = 0;
 	if (!_pendingForRequest.empty()) {
 		request();

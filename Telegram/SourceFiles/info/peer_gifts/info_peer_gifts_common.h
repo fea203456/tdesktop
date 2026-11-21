@@ -310,6 +310,7 @@ private:
 	std::unique_ptr<KeptFrame> _kept;
 	rpl::lifetime _mediaLifetime;
 	rpl::lifetime _documentLifetime;
+	rpl::lifetime _localDocumentLifetime;
 
 };
 

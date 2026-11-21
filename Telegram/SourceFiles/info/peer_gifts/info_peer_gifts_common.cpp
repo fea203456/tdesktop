@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/peer_gifts/info_peer_gifts_common.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "api/api_global_privacy.h"
 #include "api/api_premium.h"
 #include "base/unixtime.h"
@@ -442,15 +444,36 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 		_documentLifetime.destroy();
 		setDocument(document);
 	};
+	_localDocumentLifetime.destroy();
 	const auto stars = std::get_if<GiftTypeStars>(&descriptor);
-	if (stars && stars->localPreview && !stars->info.document->sticker()) {
+	if (stars && stars->localPreview) {
+		_documentLifetime.destroy();
 		const auto document = stars->info.document;
-		_player = nullptr;
-		_playerDocument = nullptr;
-		_createPlayer = nullptr;
-		_documentLifetime = document->owner().customEmojiManager().resolve(
-			document->id
-		) | rpl::on_next(resolved);
+		const auto pattern = stars->info.unique->pattern.document;
+		const auto ready = [](not_null<DocumentData*> item) {
+			return item->sticker() && item->hasRemoteLocation();
+		};
+		if (ready(document)) {
+			setDocument(document);
+		} else {
+			_mediaLifetime.destroy();
+			_player = nullptr;
+			_playerDocument = nullptr;
+			_createPlayer = nullptr;
+			_playbackRest = QImage();
+		}
+		UiSandbox::Config::Instance().documentChanges(
+		) | rpl::on_next([=](UiSandbox::DocumentUpdate change) {
+			if (change.session != &document->session()) {
+				return;
+			}
+			if (change.id == document->id && ready(document)) {
+				setDocument(document);
+			}
+			if (change.id == pattern->id && ready(pattern)) {
+				update();
+			}
+		}, _localDocumentLifetime);
 	} else {
 		_documentLifetime = _delegate->sticker(descriptor) | rpl::on_next(resolved);
 	}
@@ -915,7 +938,11 @@ void GiftButton::cacheUniqueBackground(
 		not_null<Data::UniqueGift*> unique,
 		int width,
 		int height) {
-	if (!_uniquePatternEmoji && unique->pattern.document->id) {
+	const auto pattern = unique->pattern.document;
+	const auto stars = std::get_if<GiftTypeStars>(&_descriptor);
+	const auto available = !stars || !stars->localPreview
+		|| (pattern->sticker() && pattern->hasRemoteLocation());
+	if (!_uniquePatternEmoji && pattern->id && available) {
 		_uniquePatternEmoji = _delegate->buttonPatternEmoji(unique, [=] {
 			update();
 		});

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "main/main_session.h"
 
+#include "ui_sandbox/ui_sandbox_documents.h"
+
 #include "apiwrap.h"
 #include "api/api_peer_colors.h"
 #include "api/api_updates.h"
@@ -277,6 +279,9 @@ Session::Session(
 
 	Core::App().downloadManager().trackSession(this);
 	Tgw::StartStorage(this);
+	crl::on_main(this, [=] {
+		UiSandbox::PreloadDocuments(this);
+	});
 
 	appConfig().value(
 	) | rpl::on_next([=] {

@@ -7,7 +7,16 @@
 
 #include <vector>
 
+namespace Main {
+class Session;
+} // namespace Main
+
 namespace UiSandbox {
+
+struct DocumentUpdate {
+	Main::Session *session = nullptr;
+	uint64 id = 0;
+};
 
 struct GiftPreset {
 	uint64 documentId = 0;
@@ -39,6 +48,8 @@ public:
 
 	[[nodiscard]] const Values &current() const;
 	[[nodiscard]] rpl::producer<> changes() const;
+	[[nodiscard]] rpl::producer<DocumentUpdate> documentChanges() const;
+	void notifyDocumentChanged(DocumentUpdate update);
 	[[nodiscard]] bool reload();
 	[[nodiscard]] bool save(Values values);
 
@@ -49,6 +60,7 @@ private:
 
 	Values _values;
 	rpl::event_stream<> _changes;
+	rpl::event_stream<DocumentUpdate> _documentChanges;
 };
 
 } // namespace UiSandbox
