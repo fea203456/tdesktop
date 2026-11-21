@@ -2,6 +2,12 @@
 
 #include "ui_sandbox/ui_sandbox_config.h"
 #include "base/invoke_queued.h"
+#include "data/data_changes.h"
+#include "data/data_document.h"
+#include "data/data_star_gift.h"
+#include "data/data_user.h"
+#include "main/main_session.h"
+#include "ui/toast/toast.h"
 #include "ui/layers/generic_box.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
@@ -127,7 +133,93 @@ void AddGiftControls(not_null<Ui::GenericBox*> box) {
 
 } // namespace
 
-void EditConfigBox(not_null<Ui::GenericBox*> box) {
+GiftPreset MakeGiftPreset(
+		DocumentId documentId,
+		QString title,
+		QString text,
+		const Data::UniqueGift *unique,
+		const Data::StarGiftBackground *background) {
+	auto preset = GiftPreset{
+		.documentId = documentId,
+		.title = title.isEmpty() ? u"Подарок"_q : std::move(title),
+		.centerColor = u"#3A7BD5"_q,
+		.edgeColor = u"#244D87"_q,
+		.text = std::move(text),
+		.attributes = {},
+		.patternColor = {},
+		.textColor = {},
+		.sourceSlug = {},
+	};
+	if (!unique) {
+		if (background) {
+			preset.centerColor = background->center.name(QColor::HexRgb);
+			preset.edgeColor = background->edge.name(QColor::HexRgb);
+			preset.textColor = background->text.name(QColor::HexRgb);
+		}
+		return preset;
+	}
+	const auto &backdrop = unique->backdrop;
+	preset.documentId = unique->model.document->id;
+	if (!unique->title.isEmpty()) {
+		preset.title = unique->title;
+	}
+	if (preset.text.isEmpty()) {
+		preset.text = unique->originalDetails.message.text;
+	}
+	preset.num = unique->number;
+	preset.centerColor = backdrop.centerColor.name(QColor::HexRgb);
+	preset.edgeColor = backdrop.edgeColor.name(QColor::HexRgb);
+	preset.patternColor = backdrop.patternColor.name(QColor::HexRgb);
+	preset.textColor = backdrop.textColor.name(QColor::HexRgb);
+	preset.patternDocumentId = unique->pattern.document->id;
+	preset.sourceSlug = unique->slug;
+	for (const auto attribute : {
+		static_cast<const Data::UniqueGiftAttribute*>(&unique->model),
+		static_cast<const Data::UniqueGiftAttribute*>(&unique->pattern),
+		static_cast<const Data::UniqueGiftAttribute*>(&backdrop),
+	}) {
+		if (!attribute->name.isEmpty()) {
+			preset.attributes.push_back(Data::UniqueGiftAttributeText(*attribute));
+		}
+	}
+	return preset;
+}
+
+GiftStoreResult StoreGift(GiftPreset preset, int64 cost) {
+	auto next = Config::Instance().current();
+	if (!preset.documentId || cost < 0 || (cost && !next.virtualPurchases)) {
+		return GiftStoreResult::Failed;
+	}
+	if (ranges::any_of(next.gifts, [&](const GiftPreset &gift) {
+		return preset.sourceSlug.isEmpty()
+			? gift == preset
+			: gift.sourceSlug == preset.sourceSlug;
+	})) {
+		return GiftStoreResult::AlreadyAdded;
+	}
+	if (cost > next.virtualStars) {
+		return GiftStoreResult::InsufficientBalance;
+	}
+	next.virtualStars -= cost;
+	next.gifts.push_back(std::move(preset));
+	return Config::Instance().save(std::move(next))
+		? GiftStoreResult::Saved
+		: GiftStoreResult::Failed;
+}
+
+QString GiftStoreMessage(GiftStoreResult result) {
+	switch (result) {
+	case GiftStoreResult::Saved: return u"UI Sandbox: подарок добавлен"_q;
+	case GiftStoreResult::AlreadyAdded: return u"Подарок уже есть в UI Sandbox."_q;
+	case GiftStoreResult::InsufficientBalance: return u"Недостаточно виртуальных Stars."_q;
+	case GiftStoreResult::Failed: return u"Не удалось сохранить подарок в UI Sandbox."_q;
+	}
+	Unexpected("UI Sandbox gift store result.");
+}
+
+void EditConfigBox(
+		not_null<Ui::GenericBox*> box,
+		not_null<Main::Session*> session) {
 	box->setTitle(rpl::single(u"UI Sandbox"_q));
 
 	const auto &values = Config::Instance().current();
@@ -161,6 +253,22 @@ void EditConfigBox(not_null<Ui::GenericBox*> box) {
 		u"Profile rating"_q,
 		values.rating ? QString::number(values.rating) : QString());
 
+	const auto virtualPurchases = box->addRow(object_ptr<Ui::Checkbox>(
+		box,
+		u"Локальные покупки подарков в UI Sandbox"_q,
+		values.virtualPurchases,
+		st::settingsCheckbox));
+	const auto stars = addField(
+		u"Виртуальный баланс Stars"_q,
+		QString::number(values.virtualStars));
+	const auto updateProfile = [=] {
+		using Flag = Data::PeerUpdate::Flag;
+		session->changes().peerUpdated(
+			session->user(),
+			Flag::PhoneNumber | Flag::Username | Flag::Usernames
+				| Flag::EmojiStatus | Flag::PeerGifts);
+	};
+
 	const auto save = box->addRow(object_ptr<Ui::SettingsButton>(
 		box,
 		rpl::single(u"Сохранить"_q),
@@ -193,23 +301,38 @@ void EditConfigBox(not_null<Ui::GenericBox*> box) {
 				names.push_back(name);
 			}
 		}
+		auto balanceOk = false;
+		const auto balanceText = stars->getLastText().trimmed();
+		const auto balance = balanceText.isEmpty()
+			? kDefaultVirtualStars
+			: balanceText.toLongLong(&balanceOk);
+		if (!balanceText.isEmpty() && (!balanceOk || balance < 0)) {
+			stars->showError();
+			box->showToast(u"Введите целый неотрицательный баланс."_q);
+			return;
+		}
 		if (!Config::Instance().save({
 			.premium = premium->checked(),
 			.verified = verified->checked(),
 			.emojiStatusId = emojiId,
-			.phone = phone->getLastText().trimmed(),
+			.phone = phone->getLastText(),
 			.username = username->getLastText().trimmed(),
 			.collectibleUsernames = std::move(names),
 			.rating = ratingValue,
+			.virtualPurchases = virtualPurchases->checked(),
+			.virtualStars = balance,
 			.gifts = Config::Instance().current().gifts,
 		})) {
 			box->showToast(u"Не удалось сохранить ui_sandbox.json."_q);
 			return;
 		}
-		box->showToast(u"Настройки UI Sandbox сохранены."_q);
+		updateProfile();
+		[[maybe_unused]] const auto toast = Ui::Toast::Show(
+			box->getDelegate()->outerContainer(),
+			u"UI Sandbox: сохранено"_q);
 	});
 	reset->setClickedCallback([=] {
-		if (!Config::Instance().save({ .gifts = Config::Instance().current().gifts })) {
+		if (!Config::Instance().reset()) {
 			box->showToast(u"Не удалось сбросить ui_sandbox.json."_q);
 			return;
 		}
@@ -220,7 +343,12 @@ void EditConfigBox(not_null<Ui::GenericBox*> box) {
 		username->setText(QString());
 		collectibles->setText(QString());
 		rating->setText(QString());
-		box->showToast(u"Настройки профиля сброшены."_q);
+		virtualPurchases->setChecked(false);
+		stars->setText(QString::number(kDefaultVirtualStars));
+		updateProfile();
+		[[maybe_unused]] const auto toast = Ui::Toast::Show(
+			box->getDelegate()->outerContainer(),
+			u"UI Sandbox: сброшено"_q);
 	});
 	AddGiftControls(box);
 }

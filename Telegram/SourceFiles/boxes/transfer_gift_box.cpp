@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/transfer_gift_box.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+#include "ui_sandbox/ui_sandbox_controls.h"
+
 #include "apiwrap.h"
 #include "api/api_cloud_password.h"
 #include "api/api_credits.h"
@@ -1885,6 +1888,36 @@ void ShowBuyResaleGiftBox(
 		bool forceTon,
 		not_null<PeerData*> to,
 		Fn<void(bool ok)> closeParentBox) {
+	if (UiSandbox::Config::Instance().current().virtualPurchases) {
+		const auto price = static_cast<int64>(gift->starsForResale);
+		if (!to->isSelf() || price <= 0) {
+			show->showToast(u"В UI Sandbox можно купить подарок себе по цене в Stars."_q);
+			return;
+		}
+		const auto preset = UiSandbox::MakeGiftPreset(0, {}, {}, gift.get());
+		show->show(Box([=](not_null<Ui::GenericBox*> box) {
+			box->setTitle(rpl::single(u"Покупка в UI Sandbox"_q));
+			const auto description = rpl::single() | rpl::then(
+				UiSandbox::Config::Instance().changes()
+			) | rpl::map([=] {
+				const auto balance = UiSandbox::Config::Instance().current().virtualStars;
+				return u"%1\nЦена: %2 Stars\nВиртуальный баланс: %3 Stars"_q
+					.arg(Data::UniqueGiftName(*gift))
+					.arg(price)
+					.arg(balance);
+			});
+			box->addRow(object_ptr<Ui::FlatLabel>(box, description | rpl::type_erased));
+			box->addButton(rpl::single(u"Купить локально"_q), [=] {
+				const auto result = UiSandbox::StoreGift(preset, price);
+				show->showToast(UiSandbox::GiftStoreMessage(result));
+				if (result == UiSandbox::GiftStoreResult::Saved) {
+					box->closeBox();
+				}
+			});
+			box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+		}));
+		return;
+	}
 	const auto attempt = std::make_shared<ResaleGiftAttemptState>();
 	show->show(Box([=](not_null<Ui::GenericBox*> box) {
 		struct State {

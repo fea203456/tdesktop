@@ -108,8 +108,12 @@ constexpr auto kPreloadButtonRows = 2;
 				.backdrop = {
 					.centerColor = center,
 					.edgeColor = edge,
-					.patternColor = center.lighter(),
-					.textColor = QColor(Qt::white),
+					.patternColor = UiSandbox::IsGiftColor(preset.patternColor)
+						? QColor(preset.patternColor)
+						: center.lighter(),
+					.textColor = UiSandbox::IsGiftColor(preset.textColor)
+						? QColor(preset.textColor)
+						: QColor(Qt::white),
 				},
 			}),
 			.document = document,
@@ -1364,6 +1368,12 @@ void InnerWidget::showGift(int index) {
 		const auto &entry = _localGifts[static_cast<size_t>(index) - _list->size()];
 		const auto descriptor = entry.descriptor;
 		const auto gift = entry.gift.info.unique;
+		const auto &preset = _localPresets[static_cast<size_t>(index) - _list->size()];
+		auto lines = preset.attributes;
+		if (!preset.text.isEmpty()) {
+			lines.push_back(preset.text);
+		}
+		const auto details = lines.join(u"\n"_q);
 		const auto session = &_window->session();
 		_window->uiShow()->show(Box([=](not_null<Ui::GenericBox*> box) {
 			box->setTitle(rpl::single(gift->number > 0
@@ -1385,6 +1395,9 @@ void InnerWidget::showGift(int index) {
 					extend);
 			}, button->lifetime());
 			box->addRow(object_ptr<Ui::FlatLabel>(box, u"Локальный подарок"_q));
+			if (!details.isEmpty()) {
+				box->addRow(object_ptr<Ui::FlatLabel>(box, details));
+			}
 			box->addButton(tr::lng_close(), [=] { box->closeBox(); });
 		}));
 		return;

@@ -25,6 +25,14 @@ uint64 ReadId(const QJsonValue &value) {
 		: static_cast<uint64>(std::max(qint64(0), value.toInteger()));
 }
 
+bool WriteConfig(const QJsonObject &object) {
+	const auto bytes = QJsonDocument(object).toJson();
+	auto file = QSaveFile(ConfigPath());
+	return file.open(QIODevice::WriteOnly)
+		&& file.write(bytes) == static_cast<qint64>(bytes.size())
+		&& file.commit();
+}
+
 Values ReadValues(const QJsonObject &object) {
 	auto result = Values{
 		.premium = object.value(u"premium"_q).toBool(),
@@ -34,6 +42,8 @@ Values ReadValues(const QJsonObject &object) {
 		.username = object.value(u"username"_q).toString(),
 		.collectibleUsernames = {},
 		.rating = object.value(u"rating"_q).toInt(),
+		.virtualPurchases = object.value(u"virtualPurchases"_q).toBool(),
+		.virtualStars = std::max(qint64(0), object.value(u"virtualStars"_q).toInteger(kDefaultVirtualStars)),
 		.gifts = {},
 	};
 	for (const auto entry : object.value(u"collectibleUsernames"_q).toArray()) {
@@ -51,7 +61,17 @@ Values ReadValues(const QJsonObject &object) {
 			.centerColor = gift.value(u"centerColor"_q).toString(),
 			.edgeColor = gift.value(u"edgeColor"_q).toString(),
 			.patternDocumentId = ReadId(gift.value(u"patternDocumentId"_q)),
+			.text = gift.value(u"text"_q).toString(),
+			.attributes = {},
+			.patternColor = gift.value(u"patternColor"_q).toString(),
+			.textColor = gift.value(u"textColor"_q).toString(),
+			.sourceSlug = gift.value(u"sourceSlug"_q).toString(),
 		};
+		for (const auto attribute : gift.value(u"attributes"_q).toArray()) {
+			if (attribute.isString()) {
+				preset.attributes.push_back(attribute.toString());
+			}
+		}
 		if (preset.documentId && !preset.title.isEmpty()
 			&& IsGiftColor(preset.centerColor)
 			&& IsGiftColor(preset.edgeColor)) {
@@ -124,6 +144,11 @@ bool Config::save(Values values) {
 			{ u"centerColor"_q, gift.centerColor },
 			{ u"edgeColor"_q, gift.edgeColor },
 			{ u"patternDocumentId"_q, QString::number(gift.patternDocumentId) },
+			{ u"text"_q, gift.text },
+			{ u"attributes"_q, QJsonArray::fromStringList(gift.attributes) },
+			{ u"patternColor"_q, gift.patternColor },
+			{ u"textColor"_q, gift.textColor },
+			{ u"sourceSlug"_q, gift.sourceSlug },
 		});
 	}
 	const auto object = QJsonObject{
@@ -134,16 +159,23 @@ bool Config::save(Values values) {
 		{ u"username"_q, values.username },
 		{ u"collectibleUsernames"_q, QJsonArray::fromStringList(values.collectibleUsernames) },
 		{ u"rating"_q, values.rating },
+		{ u"virtualPurchases"_q, values.virtualPurchases },
+		{ u"virtualStars"_q, static_cast<qint64>(values.virtualStars) },
 		{ u"gifts"_q, gifts },
 	};
-	const auto bytes = QJsonDocument(object).toJson();
-	auto file = QSaveFile(ConfigPath());
-	if (!file.open(QIODevice::WriteOnly)
-		|| file.write(bytes) != static_cast<qint64>(bytes.size())
-		|| !file.commit()) {
+	if (!WriteConfig(object)) {
 		return false;
 	}
 	_values = std::move(values);
+	_changes.fire({});
+	return true;
+}
+
+bool Config::reset() {
+	if (!WriteConfig({})) {
+		return false;
+	}
+	_values = {};
 	_changes.fire({});
 	return true;
 }

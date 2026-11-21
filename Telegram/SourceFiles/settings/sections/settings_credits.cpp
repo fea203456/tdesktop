@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_credits.h"
 
+#include "ui_sandbox/ui_sandbox_config.h"
+
 #include "api/api_credits.h"
 #include "api/api_earn.h"
 #include "api/api_statistics.h"
@@ -75,6 +77,20 @@ namespace Settings {
 namespace {
 
 using namespace Builder;
+
+rpl::producer<CreditsAmount> DisplayStarsBalance(
+		not_null<Main::Session*> session) {
+	auto &config = UiSandbox::Config::Instance();
+	return rpl::combine(
+		session->credits().balanceValue(),
+		rpl::single() | rpl::then(config.changes())
+	) | rpl::map([](CreditsAmount balance, rpl::empty_value) {
+		const auto &values = UiSandbox::Config::Instance().current();
+		return values.virtualPurchases
+			? CreditsAmount(values.virtualStars)
+			: balance;
+	});
+}
 
 void BuildCurrencyWithdrawalSection(
 	not_null<Ui::VerticalLayout*> content,
@@ -555,7 +571,7 @@ void Credits::setupContent() {
 				lt_amount,
 				(isCurrency
 					? controller()->session().credits().tonBalanceValue()
-					: controller()->session().credits().balanceValue()
+					: DisplayStarsBalance(&controller()->session())
 				) | rpl::map(
 					Lang::FormatCreditsAmountDecimal
 				) | rpl::map(tr::bold),
@@ -564,6 +580,16 @@ void Credits::setupContent() {
 			st::defaultPopupMenu,
 			std::move(context)),
 		style::al_top);
+	if (!isCurrency) {
+		const auto note = rpl::single() | rpl::then(
+			UiSandbox::Config::Instance().changes()
+		) | rpl::map([] {
+			return UiSandbox::Config::Instance().current().virtualPurchases
+				? u"Виртуальный баланс UI Sandbox"_q
+				: QString();
+		});
+		content->add(object_ptr<Ui::FlatLabel>(content, note | rpl::type_erased));
+	}
 	if (isCurrency) {
 		const auto rate = controller()->session().credits().usdRate();
 		const auto wrap = content->add(
@@ -700,7 +726,7 @@ base::weak_qptr<Ui::RpWidget> Credits::createPinnedToTop(
 			&controller()->session(),
 			isCurrency
 				? controller()->session().credits().tonBalanceValue()
-				: controller()->session().credits().balanceValue(),
+				: DisplayStarsBalance(&controller()->session()),
 			true,
 			content->heightValue() | rpl::map([=](int height) {
 				const auto ratio = float64(height - content->minimumHeight())

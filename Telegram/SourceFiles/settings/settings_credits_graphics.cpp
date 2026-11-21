@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_credits_graphics.h"
 
 #include "ui_sandbox/ui_sandbox_controls.h"
+#include "ui_sandbox/ui_sandbox_config.h"
 
 #include "api/api_chat_invite.h"
 #include "api/api_credits.h"
@@ -1700,6 +1701,22 @@ void GenericCreditsEntryBox(
 		std::shared_ptr<const UniqueGiftCoverActions> actions) {
 	GenericCreditsEntryCover(box, show, e, s, st, actions);
 	GenericCreditsEntryBody(box, show, e, s, nullptr, st);
+	if ((e.stargift || e.soldOutInfo)
+		&& (e.uniqueGift || e.bareGiftStickerId)) {
+		const auto preset = UiSandbox::MakeGiftPreset(
+			e.bareGiftStickerId,
+			e.giftTitle,
+			e.description.text,
+			e.uniqueGift.get(),
+			e.giftBackground.get());
+		const auto add = box->addRow(object_ptr<Ui::SettingsButton>(
+			box,
+			rpl::single(u"Добавить в UI Sandbox"_q),
+			st::settingsButtonNoIcon));
+		add->setClickedCallback([=] {
+			box->showToast(UiSandbox::GiftStoreMessage(UiSandbox::StoreGift(preset)));
+		});
+	}
 	if (actions && actions->aboveButtons && e.uniqueGift) {
 		actions->aboveButtons(box);
 	}
@@ -2590,7 +2607,9 @@ void GenericCreditsEntryBody(
 			? st::giveawayGiftCodeBoxUpgradeNext
 			: st::giveawayGiftCodeBox.button);
 		if (canBuyResold) {
-			if (uniqueGift->onlyAcceptTon || e.giftResaleForceTon) {
+			if (UiSandbox::Config::Instance().current().virtualPurchases) {
+				button->setText(rpl::single(u"Купить в UI Sandbox"_q));
+			} else if (uniqueGift->onlyAcceptTon || e.giftResaleForceTon) {
 				button->setText(rpl::single(QString()));
 				Ui::SetButtonTwoLabels(
 					button,
@@ -2914,6 +2933,8 @@ void GlobalStarGiftBox(
 				? resale.recipientId.value
 				: 0),
 			.stargiftId = data.id,
+			.giftTitle = data.resellTitle,
+			.giftBackground = data.background,
 			.uniqueGift = data.unique,
 			.peerType = Data::CreditsHistoryEntry::PeerType::Peer,
 			.limitedCount = data.limitedCount,
@@ -2955,6 +2976,7 @@ Data::CreditsHistoryEntry SavedStarGiftEntry(
 		.stargiftId = data.info.id,
 		.giftPrepayUpgradeHash = data.giftPrepayUpgradeHash,
 		.giftTitle = data.info.resellTitle,
+		.giftBackground = data.info.background,
 		.uniqueGift = data.info.unique,
 		.peerType = Data::CreditsHistoryEntry::PeerType::Peer,
 		.limitedCount = data.info.limitedCount,

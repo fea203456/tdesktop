@@ -129,14 +129,25 @@ rpl::producer<int32> ColorIdValue(not_null<Data::ForumTopic*> topic) {
 	) | rpl::map([=] { return topic->colorId(); });
 }
 
-rpl::producer<TextWithEntities> PhoneValue(not_null<UserData*> user) {
+rpl::producer<TextWithEntities> PhoneValue(
+		not_null<UserData*> user,
+		bool forDisplay) {
+	const auto local = forDisplay && user->isSelf();
+	auto sandbox = local
+		? UiSandbox::Config::Instance().changes()
+		: (rpl::never<>() | rpl::type_erased);
 	return rpl::merge(
+		std::move(sandbox),
 		Countries::Instance().updated(),
 		user->session().changes().peerFlagsValue(
 			user,
 			UpdateFlag::PhoneNumber) | rpl::to_empty
 	) | rpl::map([=] {
-		return tr::marked(Ui::FormatPhone(user->phone()));
+		const auto hasOverride = local
+			&& !UiSandbox::Config::Instance().current().phone.isEmpty();
+		return tr::marked(hasOverride
+			? user->phoneForDisplay()
+			: Ui::FormatPhone(user->phone()));
 	});
 }
 
@@ -157,7 +168,8 @@ rpl::producer<TextWithEntities> PhoneOrHiddenValue(not_null<UserData*> user) {
 			const QString &hidden) {
 		if (phone.text.isEmpty() && username.isEmpty() && about.isEmpty()) {
 			return tr::marked(hidden);
-		} else if (IsCollectiblePhone(user)) {
+		} else if (IsCollectiblePhone(user)
+			&& (!user->isSelf() || UiSandbox::Config::Instance().current().phone.isEmpty())) {
 			return tr::link(phone, u"internal:collectible_phone/"_q
 				+ user->phone() + '@' + QString::number(user->id.value));
 		} else {

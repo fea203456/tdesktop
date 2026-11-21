@@ -439,7 +439,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.id = u"main/ui_sandbox"_q,
 		.title = rpl::single(u"UI Sandbox"_q),
 		.icon = { &st::menuIconManage },
-		.onClick = [=] { controller->show(Box(UiSandbox::EditConfigBox)); },
+		.onClick = [=] { controller->show(Box(UiSandbox::EditConfigBox, &controller->session())); },
 		.keywords = { u"sandbox"_q, u"overlay"_q, u"theme"_q },
 	});
 

@@ -49,7 +49,8 @@ rpl::producer<not_null<PeerData*>> MigratedOrMeValue(
 [[nodiscard]] rpl::producer<int32> ColorIdValue(
 	not_null<Data::ForumTopic*> topic);
 [[nodiscard]] rpl::producer<TextWithEntities> PhoneValue(
-	not_null<UserData*> user);
+	not_null<UserData*> user,
+	bool forDisplay = true);
 [[nodiscard]] QString PublicLinkByPhone(not_null<UserData*> user);
 [[nodiscard]] rpl::producer<TextWithEntities> PhoneOrHiddenValue(
 	not_null<UserData*> user);

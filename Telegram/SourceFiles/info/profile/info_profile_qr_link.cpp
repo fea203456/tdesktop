@@ -112,7 +112,7 @@ void OwnQrLinkState::start() {
 		_username = username.text;
 		refresh();
 	}, _lifetime);
-	PhoneValue(_self) | rpl::on_next([=](const TextWithEntities &phone) {
+	PhoneValue(_self, false) | rpl::on_next([=](const TextWithEntities &phone) {
 		_phoneLabel = phone.text;
 		refresh();
 	}, _lifetime);

@@ -1716,13 +1716,6 @@ BlockPart DetailsFiller::makeInfo() {
 						? QString::number(user->emojiStatusIdForDisplay().documentId)
 						: QString();
 				}));
-			addInfoLine(u"Local phone"_q, PhoneWithSpoilerValue(
-				user,
-				localValue([=](const auto &values) {
-					return values.phone.isEmpty()
-						? QString()
-						: user->phoneForDisplay();
-				})));
 			addInfoLine(
 				u"Local username"_q,
 				localValue([=](const auto &values) {

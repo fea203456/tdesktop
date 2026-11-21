@@ -25,11 +25,18 @@ struct GiftPreset {
 	QString centerColor;
 	QString edgeColor;
 	uint64 patternDocumentId = 0;
+	QString text;
+	QStringList attributes;
+	QString patternColor;
+	QString textColor;
+	QString sourceSlug;
 
 	friend bool operator==(const GiftPreset &, const GiftPreset &) = default;
 };
 
 [[nodiscard]] bool IsGiftColor(const QString &value);
+
+inline constexpr auto kDefaultVirtualStars = int64(100000);
 
 struct Values {
 	bool premium = false;
@@ -39,6 +46,8 @@ struct Values {
 	QString username;
 	QStringList collectibleUsernames;
 	int rating = 0;
+	bool virtualPurchases = false;
+	int64 virtualStars = kDefaultVirtualStars;
 	std::vector<GiftPreset> gifts;
 };
 
@@ -52,6 +61,7 @@ public:
 	void notifyDocumentChanged(DocumentUpdate update);
 	[[nodiscard]] bool reload();
 	[[nodiscard]] bool save(Values values);
+	[[nodiscard]] bool reset();
 
 private:
 	Config();
